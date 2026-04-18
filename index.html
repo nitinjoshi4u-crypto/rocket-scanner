@@ -247,6 +247,14 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
   <button class="btn" onclick="document.getElementById('brainIn').click()" title="Import knowledge from a previously exported file" style="font-size:11px">🧠 Import Brain</button>
   <input type="file" id="brainIn" accept=".json" style="display:none" onchange="importBrain(event)">
   <button class="btn" onclick="resetBrain(this)" title="Wipe all accumulated correlations and start fresh" style="font-size:11px;border-color:rgba(239,68,68,.3);color:var(--red)">🗑 Reset</button>
+  <div id="mobileMenuBtn" style="display:none;position:relative;align-items:center">
+    <button class="btn" onclick="document.getElementById('mobileMenuPanel').style.display=document.getElementById('mobileMenuPanel').style.display==='none'?'flex':'none'" style="font-size:14px;padding:7px 11px">☰</button>
+    <div id="mobileMenuPanel" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--bg-raised);border:1px solid var(--border-hi);border-radius:10px;padding:10px;z-index:1000;box-shadow:0 8px 32px rgba(0,0,0,.4);flex-direction:column;gap:8px;min-width:160px">
+      <button class="btn" onclick="exportBrain();document.getElementById('mobileMenuPanel').style.display='none'" style="font-size:12px;width:100%">💾 Export Brain</button>
+      <button class="btn" onclick="document.getElementById('brainIn').click();document.getElementById('mobileMenuPanel').style.display='none'" style="font-size:12px;width:100%">🧠 Import Brain</button>
+      <button class="btn" onclick="resetBrain(this);document.getElementById('mobileMenuPanel').style.display='none'" style="font-size:12px;width:100%;border-color:rgba(239,68,68,.3);color:var(--red)">🗑 Reset Brain</button>
+    </div>
+  </div>
   <div style="position:relative;display:flex;align-items:center">
     <button class="btn btn-fire" id="loadFilesBtn" onclick="showUploadScreen()">Load Files</button>
     <button class="btn" onclick="toggleRequiredFilesPopover()" title="Required input files" style="font-size:14px;padding:8px 12px;margin-left:4px">ℹ️</button>
