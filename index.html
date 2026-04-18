@@ -1419,7 +1419,7 @@ function renderPerformance(){
     {label:'Max Drawdown',value:p.maxDrawdown>0?'-₹'+p.maxDrawdown.toLocaleString('en-IN'):'—',color:'var(--red)',sub:'Peak-to-trough in period'},
     {label:'Max Loss Streak',value:p.maxLossStreak+' days',color:p.maxLossStreak>=5?'var(--red)':p.maxLossStreak>=3?'var(--amber)':'var(--green)',sub:'Consecutive losing days'},
   ];
-  const kpiHtml=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">`+kpis.map(k=>`
+  const kpiHtml=`<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">`+kpis.map(k=>`
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 18px">
       <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${k.label}</div>
       <div style="font-size:20px;font-weight:800;color:${k.color};font-family:'DM Mono',monospace">${k.value}</div>
