@@ -2723,8 +2723,9 @@ function parseTradebook(text){
     const dpKey=r.sym+'|'+r.sellDate;
     const dpAlreadyPaid=dpPaid.has(dpKey);
     if(!dpAlreadyPaid) dpPaid.add(dpKey);
-    const bc=calcZerodhaCharges(r.buyPrice,r.qty,false);
-    const sc=calcZerodhaCharges(r.sellPrice,r.qty,true,false,dpAlreadyPaid);
+    const intra=r.holdDays===0;
+    const bc=calcZerodhaCharges(r.buyPrice,r.qty,false,intra);
+    const sc=calcZerodhaCharges(r.sellPrice,r.qty,true,intra,intra||dpAlreadyPaid);
     return (r.sellPrice-r.buyPrice)*r.qty-bc-sc;
   });
   const bookedByDate={};
