@@ -1413,7 +1413,6 @@ function renderPerformance(){
     {label:'Avg Daily P&L',value:fmtRs(p.avgDailyPnl),color:clr(p.avgDailyPnl),sub:'On days traded, net of charges'},
     {label:'Largest Win',value:'+₹'+p.largestWinRs.toLocaleString('en-IN'),color:'var(--green)',sub:'Single lot, net'},
     {label:'Max Win Streak',value:p.maxWinStreak+' days',color:p.maxWinStreak>=5?'var(--green)':p.maxWinStreak>=3?'var(--amber)':'var(--t1)',sub:'Consecutive profitable days'},
-    {label:'Kelly %',value:(_kelly>0?'+':'')+_kelly.toFixed(1)+'%',color:_kelly>=20?'var(--green)':_kelly>=5?'var(--amber)':'var(--red)',sub:'Optimal position size fraction'},
     {label:'Avg Hold',value:p.avgHoldDays+'d',color:'var(--t1)',sub:'Avg position duration'},
     // ── Negatives after ──
     {label:'Largest Loss',value:'-₹'+Math.abs(p.largestLossRs).toLocaleString('en-IN'),color:'var(--red)',sub:'Single lot, net'},
