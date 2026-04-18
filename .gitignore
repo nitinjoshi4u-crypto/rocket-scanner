@@ -1,0 +1,13 @@
+# Only index.html goes to GitHub — everything else stays local
+.claude/
+Scanner Uploads/
+Rocket_Brain.json
+Basket_Template.json
+Zerodha_Basket_Buy.json
+Zerodha_Basket_Sell.json
+Rocket_Scanner - Last Working.html
+CLAUDE.md
+*.csv
+*.zip
+*.json
+!index.html
