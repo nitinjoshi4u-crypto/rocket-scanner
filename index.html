@@ -207,11 +207,14 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
   .pgn{margin:12px 0 24px}
   .srch{min-width:150px}
 }
+#mobileMenuBtn{display:none}
+@media(max-width:768px){
+  .hdr-r .btn:not(#loadFilesBtn){display:none}
+  #mobileMenuBtn{display:flex}
+}
 @media(max-width:480px){
   .stats{grid-template-columns:repeat(2,1fr)}
   .fg{min-width:calc(50% - 6px)}
-  .hdr-r .btn:not(#loadFilesBtn){display:none}
-  #mobileMenuBtn{display:flex}
   .st-v{font-size:14px}
   .st{padding:8px 10px}
   .tabs .tab{padding:7px 8px;font-size:10px}
@@ -270,7 +273,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
   <button class="btn" onclick="document.getElementById('brainIn').click()" title="Import knowledge from a previously exported file" style="font-size:11px">🧠 Import Brain</button>
   <input type="file" id="brainIn" accept=".json" style="display:none" onchange="importBrain(event)">
   <button class="btn" onclick="resetBrain(this)" title="Wipe all accumulated correlations and start fresh" style="font-size:11px;border-color:rgba(239,68,68,.3);color:var(--red)">🗑 Reset</button>
-  <div id="mobileMenuBtn" style="display:none;position:relative;align-items:center">
+  <div id="mobileMenuBtn" style="position:relative;align-items:center">
     <button class="btn" onclick="document.getElementById('mobileMenuPanel').style.display=document.getElementById('mobileMenuPanel').style.display==='none'?'flex':'none'" style="font-size:14px;padding:7px 11px">☰</button>
     <div id="mobileMenuPanel" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--bg-raised);border:1px solid var(--border-hi);border-radius:10px;padding:10px;z-index:1000;box-shadow:0 8px 32px rgba(0,0,0,.4);flex-direction:column;gap:8px;min-width:160px">
       <button class="btn" onclick="exportBrain();document.getElementById('mobileMenuPanel').style.display='none'" style="font-size:12px;width:100%">💾 Export Brain</button>
@@ -1559,7 +1562,7 @@ function renderPerformance(){
           <div style="font-size:12px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.08em">Latest Session — ${latestDate} <span style="font-size:10px;font-weight:400;color:var(--t3)">(${latestSource})</span></div>
           <div style="font-size:16px;font-weight:800;color:${clr(latestTotal)};font-family:'DM Mono',monospace">${fmtRs(latestTotal)} <span style="font-size:10px;color:var(--t3);font-weight:400">net of charges</span></div>
         </div>
-        ${latestTbl.getHtml()}
+        <div style="overflow-x:auto">${latestTbl.getHtml()}</div>
       </div>`;
       setTimeout(()=>{latestTbl.render();},0);
     }
@@ -1769,7 +1772,7 @@ function renderMethodology(){
   const _archiveCount=removedFeats.length;
 
   mc.innerHTML=`
-    <nav style="position:sticky;top:72px;z-index:50;background:var(--bg);padding:8px 0 10px;margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+    <nav style="position:sticky;top:60px;z-index:50;background:var(--bg);padding:8px 0 10px;margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,0.3);overflow-x:auto;-webkit-overflow-scrolling:touch">
       <a href="#meth-regime" onclick="event.preventDefault();scrollToSection('meth-regime')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">🐂 Regime</a>
       <a href="#meth-engine" onclick="event.preventDefault();scrollToSection('meth-engine')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">⚙ Engine</a>
       <a href="#meth-rockets" onclick="event.preventDefault();scrollToSection('meth-rockets')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--fire);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">🚀 Rockets (${_rocketCount})</a>
@@ -1811,7 +1814,7 @@ function renderMethodology(){
         else pri=3; // SKIP
         return {...r,_pri:pri,_score:s?s.score:0};
       }).sort((a,b)=>a._pri!==b._pri?a._pri-b._pri:b._score-a._score);
-      let tbl='<table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
+      let tbl='<div style="overflow-x:auto"><table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
       for(const r of prioritized){
         const todayStr=r.todayChg!=null?((r.todayChg>=0?'+':'')+r.todayChg.toFixed(2)+'%'):'—';
         const todayC=r.todayChg!=null?(r.todayChg>=0?'var(--green)':'var(--red)'):'var(--t3)';
@@ -1828,7 +1831,7 @@ function renderMethodology(){
         else {action='SKIP — weak follow-through';actionC='var(--orange)';}
         tbl+='<tr><td style="font-weight:700">'+r.symbol+'</td><td style="color:var(--fire);font-weight:600">+'+r.yesterdayChg.toFixed(2)+'%</td><td style="color:'+todayC+';font-weight:600">'+todayStr+'</td><td style="color:'+scoreC+';font-weight:600">'+scoreStr+'</td><td style="color:var(--t3)">'+rankStr+'</td><td style="color:'+actionC+';font-weight:700;font-size:11px">'+action+'</td></tr>';
       }
-      tbl+='</tbody></table>';
+      tbl+='</tbody></table></div>';
       tbl+='<p style="font-size:10px;color:var(--t3);margin-top:6px">Engine learning: <strong style="color:var(--green)">'+held.length+' held</strong> (label=1, reinforced) · <strong style="color:var(--red)">'+collapsed.length+' collapsed</strong> (label=0, unlearned) · Quality target: '+(E.qualityTargetN||0)+' positives this session</p>';
       return tbl;
     })()}</div>
