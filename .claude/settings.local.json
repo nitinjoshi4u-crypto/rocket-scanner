@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep \"\\\\\\\\\\\\\\\\\")",
+      "Bash(grep -Pn \"\\\\\\\\\\\\\\\\\" Rocket_Scanner.html)",
+      "Bash(node -e ' *)",
+      "Bash(powershell -Command ' *)"
+    ]
+  }
+}

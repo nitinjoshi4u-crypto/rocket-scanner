@@ -1,0 +1,48 @@
+[
+  {
+    "id": 1776415750727,
+    "instrument": {
+      "tradingsymbol": "MOKSH",
+      "scripCode": "",
+      "type": "EQ",
+      "symbol": "MOKSH",
+      "segment": "NSE",
+      "exchange": "NSE",
+      "tickSize": 0.01,
+      "lotSize": 1,
+      "company": "Moksh Ornaments Ltd.",
+      "tradable": true,
+      "precision": 2,
+      "fullName": "MOKSH",
+      "niceName": "MOKSH",
+      "niceNameHTML": "MOKSH",
+      "stockWidget": true,
+      "exchangeToken": 0,
+      "instrumentToken": 0,
+      "isin": "",
+      "related": [],
+      "underlying": null,
+      "auctionNumber": null,
+      "isEquity": true,
+      "isWeekly": false
+    },
+    "weight": 0,
+    "params": {
+      "transactionType": "BUY",
+      "product": "CNC",
+      "orderType": "LIMIT",
+      "validity": "DAY",
+      "validityTTL": 1,
+      "quantity": 2031,
+      "price": 11.75,
+      "triggerPrice": 0,
+      "disclosedQuantity": 0,
+      "lastPrice": 0,
+      "variety": "regular",
+      "gtt": {
+        "target": 4.26
+      },
+      "tags": []
+    }
+  }
+]
