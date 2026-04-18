@@ -3464,19 +3464,11 @@ function loadFilterState(){
       // Orders are always today-only — check date on first entry
       if(Array.isArray(parsed)&&parsed.length){
         const firstDate=(parsed[0].time||'').substring(0,10);
-        // Accept orders from today OR the last trading day (weekends/holidays)
-        const {dateMs}=istNow();
-        const ist=new Date(dateMs);
-        const calToday=`${ist.getUTCFullYear()}-${String(ist.getUTCMonth()+1).padStart(2,'0')}-${String(ist.getUTCDate()).padStart(2,'0')}`;
-        // Walk back up to 3 days to find last trading day (skip weekends)
-        let lastTrading=calToday;
-        for(let i=0;i<3;i++){
-          const d=new Date(ist); d.setUTCDate(ist.getUTCDate()-i);
-          const dow=d.getUTCDay(); // 0=Sun,6=Sat
-          if(dow!==0&&dow!==6){lastTrading=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;break;}
-        }
-        if(firstDate===calToday||firstDate===lastTrading) ORDERS_TODAY=parsed;
-        else console.log('INIT: cleared stale orders from',firstDate,'(last trading:',lastTrading,')');
+        // Accept orders from any day within the last 7 calendar days — no hardcoded holiday logic
+        const ageMs=Date.now()-new Date(firstDate).getTime();
+        const ageDays=ageMs/86400000;
+        if(ageDays<=7) ORDERS_TODAY=parsed;
+        else console.log('INIT: cleared stale orders from',firstDate,'(older than 7 days)');
       }
     }
   }catch(e){ console.error('INIT step2g orders restore failed:',e); }
