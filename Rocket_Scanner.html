@@ -75,6 +75,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .pill-cyan{background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2)}
 .pill-fire{background:rgba(249,115,22,.1);color:var(--fire);border:1px solid rgba(249,115,22,.2)}
 .pill-teal{background:rgba(20,184,166,.1);color:#14b8a6;border:1px solid rgba(20,184,166,.2)}
+.pill-rose{background:rgba(244,63,94,.1);color:#f43f5e;border:1px solid rgba(244,63,94,.3)}
 .pill-lime{background:rgba(132,204,22,.1);color:#84cc16;border:1px solid rgba(132,204,22,.2)}
 .tabs{display:flex;gap:0;margin:16px 0 0;border-bottom:1px solid var(--border)}
 .tab{padding:10px 22px;cursor:pointer;font-size:13px;font-weight:600;color:var(--t3);border-bottom:2px solid transparent;transition:all .2s}
@@ -1235,7 +1236,7 @@ function renderStats(){
   if(SUPPRESSED_HELD>0){
     const dropEl=document.getElementById('fReDrop');
     const dropV=dropEl?dropEl.value:'1';
-    pills.push(`<span class="info-pill pill-fire" title="These stocks are in your Positions. Longs: price hasn't fallen ≥${dropV}% below avg buy. Shorts and zero-qty are always suppressed.">📌 ${SUPPRESSED_HELD} already held (no re-entry signal)</span>`);
+    pills.push(`<span class="info-pill pill-rose" title="These stocks are in your Positions. Longs: price hasn't fallen &ge;${dropV}% below avg buy. Shorts and zero-qty are always suppressed.">📌 ${SUPPRESSED_HELD} already held (no re-entry signal)</span>`);
   }
   const bulkCt=ALL.filter(s=>s.flags.includes('BULK')).length;
   const blkCt=ALL.filter(s=>s.flags.includes('BLK')).length;
