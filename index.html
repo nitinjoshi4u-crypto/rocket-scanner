@@ -352,8 +352,8 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="3" max="30" step="0.5" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:var(--fire);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='rgba(249,115,22,.4)'" oninput="saveFilterState()" title="Min 1D% gain yesterday to count as a rocket for learning signal."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--red)">SL ATR ×</span><input type="number" id="fSlAtrMult" value="1.25" placeholder="1.25" min="0" max="5" step="0.05" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(239,68,68,.4);border-radius:8px;color:var(--red);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--red)'" onblur="this.style.borderColor='rgba(239,68,68,.4)'" oninput="saveFilterState()" title="SL = max(adaptiveSL, this × ATR% 1W)"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--green)">TGT ATR ×</span><input type="number" id="fTgtAtrMult" value="0.5" placeholder="0.5" min="0" max="5" step="0.05" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(34,197,94,.4);border-radius:8px;color:var(--green);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='rgba(34,197,94,.4)'" oninput="saveFilterState()" title="TGT = max(adaptiveTGT, this × ATR% 1W)"></div>
-   <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Export Buy Basket</button>
-   <button class="btn" id="sellBasketBtn" onclick="exportSellBasket()" disabled style="background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:var(--red);font-weight:700" title="Export selected stocks as Zerodha sell basket order">🧺 Export Sell Basket</button>
+   <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket</button>
+   <button class="btn" id="sellBasketBtn" onclick="exportSellBasket()" disabled style="background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:var(--red);font-weight:700" title="Export selected stocks as Zerodha sell basket order">🧺 Sell Basket</button>
   </div>
   <div class="status-bar" id="statusBar"></div>
   <div id="tblOuter">
@@ -2152,8 +2152,8 @@ function renderBasketBtn(){
   const holdSellCount=(HOLDINGS||[]).filter(h=>h.qty>0).length;
   const buyBtn=document.getElementById('basketBtn');
   const sellBtn=document.getElementById('sellBasketBtn');
-  if(buyBtn){buyBtn.textContent=buyCount>0?`🧺 Export Buy Basket (${buyCount})`:'🧺 Export Buy Basket';buyBtn.disabled=buyCount===0;}
-  if(sellBtn){sellBtn.textContent=holdSellCount>0?`🧺 Export Sell Basket (${holdSellCount})`:'🧺 Export Sell Basket';sellBtn.disabled=holdSellCount===0;}
+  if(buyBtn){buyBtn.textContent=buyCount>0?`🧺 Buy Basket (${buyCount})`:'🧺 Buy Basket';buyBtn.disabled=buyCount===0;}
+  if(sellBtn){sellBtn.textContent=holdSellCount>0?`🧺 Sell Basket (${holdSellCount})`:'🧺 Sell Basket';sellBtn.disabled=holdSellCount===0;}
 }
 function renderBasketSummary(){
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
