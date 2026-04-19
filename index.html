@@ -354,6 +354,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
    <div class="fg"><span class="fg-lbl">Stocks</span><input type="number" id="fTopN" value="" placeholder="auto" min="1" max="20" step="1" style="padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="if(parseInt(this.value)>20)this.value=20;applyFilters()" title="Number of top-scored stocks to allocate. Empty = auto (min of rocket count and 20). Hard cap = 20 (Zerodha basket limit)."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-down %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stocks in open Positions are hidden unless price has fallen at least this % below your avg buy (long). Shorts and zero-qty positions are always suppressed. Default 1%."></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Rocket Thr %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="3" max="30" step="0.5" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:var(--fire);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='rgba(249,115,22,.4)'" oninput="saveFilterState()" title="Min 1D% gain yesterday to count as a rocket for learning signal."></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Export Buy Basket</button>
    <button class="btn" id="sellBasketBtn" onclick="exportSellBasket()" disabled style="background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:var(--red);font-weight:700" title="Export selected stocks as Zerodha sell basket order">🧺 Export Sell Basket</button>
   </div>
@@ -917,18 +918,14 @@ function runEngine(raw, sessionTag){
     valid.forEach((x,ri)=>{r[x.i]=ri/(valid.length-1||1);});
     return r;
   }
-  // ── Configurable thresholds (read from settings) ──
-  let rocketPct=10, holdFactor=0.3; // defaults
+  // ── Configurable thresholds ──
+  let rocketPct=10;
   try{
     const st=JSON.parse(localStorage.getItem(SCANNER_STORE)||'{}');
     if(st.rocketPct!=null&&isFinite(parseFloat(st.rocketPct))) rocketPct=parseFloat(st.rocketPct);
-    if(st.holdFactor!=null&&isFinite(parseFloat(st.holdFactor))) holdFactor=parseFloat(st.holdFactor);
   }catch(e){}
-  // Also check live inputs (if methodology tab is rendered)
   const _rEl=document.getElementById('fRocketPct');
-  const _hEl=document.getElementById('fHoldFactor');
   if(_rEl&&_rEl.value!=='') rocketPct=parseFloat(_rEl.value)||10;
-  if(_hEl&&_hEl.value!=='') holdFactor=parseFloat(_hEl.value)||0.3;
 
   // ── Today's rockets: stocks that moved ≥X% up ──
   const ROCKET_THRESHOLD=rocketPct;
@@ -955,13 +952,14 @@ function runEngine(raw, sessionTag){
       const idx=filteredSymMap[sym];
       const todayData=idx!=null?filtered[idx]:null;
       const todayChg=todayData&&pcKey?todayData[pcKey]:null;
-      const collapseThreshold=-(yesterdayChg*holdFactor);
-      const held=todayChg!=null&&todayChg>collapseThreshold;
+      // "Held" = retained its peak today (peak_retention ≥ 50%), same criterion as hard filter
+      const peakRet=todayData?todayData.peak_retention:null;
+      const held=peakRet!=null?peakRet>=50:(todayChg!=null&&todayChg>0);
       yesterdayRockets.push({
         symbol:sym,
         yesterdayChg:+yesterdayChg.toFixed(2),
         todayChg:todayChg!=null?+todayChg.toFixed(2):null,
-        collapseThreshold:+collapseThreshold.toFixed(2),
+        peakRetention:peakRet!=null?+peakRet.toFixed(1):null,
         held:held,
         inToday:idx!=null
       });
@@ -1157,7 +1155,6 @@ function runEngine(raw, sessionTag){
     goodFromYesterday: goodFromYesterday,
     badFromYesterday: badFromYesterday,
     qualityTargetN: qualityN,
-    holdFactor: holdFactor,
     totalParsed: totalParsed
   };
   COLS=getCols(); // refresh dynamic columns
@@ -1847,9 +1844,7 @@ function renderMethodology(){
 
     <h3 id="meth-rockets" style="margin-top:28px">🚀 Yesterday's Rockets Today — Quality Filter <span style="font-size:12px;color:var(--t3);font-weight:400">(${_rocketCount})</span></h3>
     <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
-      <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Rocket Threshold %</span><input type="number" id="fRocketPct" value="${E.rocketThreshold||10}" min="3" max="30" step="0.5" style="width:80px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none" title="Min 1D change % to count as a rocket (X). Default 10%." onchange="saveFilterState();updateQualityPanel()"></div>
-      <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Hold Factor</span><input type="number" id="fHoldFactor" value="${E.holdFactor!=null?E.holdFactor:0.3}" min="0" max="1" step="0.05" style="width:80px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none" title="Collapse = today's change < -(yesterday's change × this). Default 0.3 = can dip up to 30% of yesterday's gain." onchange="saveFilterState();updateQualityPanel()"></div>
-      <p id="qualityExampleText" style="font-size:11px;color:var(--t3);max-width:400px;margin:0"></p>
+      <p style="font-size:11px;color:var(--t3);margin:0">Held = Peak Retention ≥ 50% today (candle closed near its high). Collapsed = faded, label=0. Rocket threshold set in Rankings filters.</p>
     </div>
     <div id="qualityPanelBody">${(()=>{
       const yr=E.yesterdayRockets||[];
@@ -1868,10 +1863,12 @@ function renderMethodology(){
         else pri=3; // SKIP
         return {...r,_pri:pri,_score:s?s.score:0};
       }).sort((a,b)=>a._pri!==b._pri?a._pri-b._pri:b._score-a._score);
-      let tbl='<div style="overflow-x:auto"><table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
+      let tbl='<div style="overflow-x:auto"><table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Peak Ret%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
       for(const r of prioritized){
         const todayStr=r.todayChg!=null?((r.todayChg>=0?'+':'')+r.todayChg.toFixed(2)+'%'):'—';
         const todayC=r.todayChg!=null?(r.todayChg>=0?'var(--green)':'var(--red)'):'var(--t3)';
+        const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(1)+'%':'—';
+        const peakC=r.peakRetention!=null?(r.peakRetention>=50?'var(--green)':'var(--red)'):'var(--t3)';
         const s=scoreMap[r.symbol];
         const scoreStr=s?s.score.toFixed(1):'—';
         const scoreC=s?'var(--fire)':'var(--t3)';
@@ -1883,7 +1880,7 @@ function renderMethodology(){
         else if(s&&s.score>=50&&r.todayChg!=null&&r.todayChg>=0){action='WATCH — moderate score';actionC='var(--cyan)';}
         else if(r.todayChg!=null&&r.todayChg<-3){action='SKIP — fading fast';actionC='var(--red)';}
         else {action='SKIP — weak follow-through';actionC='var(--orange)';}
-        tbl+='<tr><td style="font-weight:700">'+r.symbol+'</td><td style="color:var(--fire);font-weight:600">+'+r.yesterdayChg.toFixed(2)+'%</td><td style="color:'+todayC+';font-weight:600">'+todayStr+'</td><td style="color:'+scoreC+';font-weight:600">'+scoreStr+'</td><td style="color:var(--t3)">'+rankStr+'</td><td style="color:'+actionC+';font-weight:700;font-size:11px">'+action+'</td></tr>';
+        tbl+='<tr><td style="font-weight:700">'+r.symbol+'</td><td style="color:var(--fire);font-weight:600">+'+r.yesterdayChg.toFixed(2)+'%</td><td style="color:'+todayC+';font-weight:600">'+todayStr+'</td><td style="color:'+peakC+';font-weight:600">'+peakStr+'</td><td style="color:'+scoreC+';font-weight:600">'+scoreStr+'</td><td style="color:var(--t3)">'+rankStr+'</td><td style="color:'+actionC+';font-weight:700;font-size:11px">'+action+'</td></tr>';
       }
       tbl+='</tbody></table></div>';
       tbl+='<p style="font-size:10px;color:var(--t3);margin-top:6px">Engine learning: <strong style="color:var(--green)">'+held.length+' held</strong> (label=1, reinforced) · <strong style="color:var(--red)">'+collapsed.length+' collapsed</strong> (label=0, unlearned) · Quality target: '+(E.qualityTargetN||0)+' positives this session</p>';
@@ -1905,26 +1902,18 @@ function renderMethodology(){
 // Live-update yesterday's rockets table when thresholds change
 function updateQualityPanel(){
   const rocketPct=parseFloat(document.getElementById('fRocketPct')?.value)||ENGINE_DATA?.rocketThreshold||10;
-  const holdFactor=parseFloat(document.getElementById('fHoldFactor')?.value)||ENGINE_DATA?.holdFactor||0.3;
-  // Always update example text
-  const exampleEl=document.getElementById('qualityExampleText');
-  if(exampleEl) exampleEl.innerHTML='A rocket that went +'+rocketPct+'% yesterday can dip to <strong>'+(-(rocketPct*holdFactor)).toFixed(1)+'%</strong> today and still count as "held." Below that → collapsed → label = 0.';
   const E=ENGINE_DATA;
   if(!E||!E.yesterdayRockets) return;
-  // Re-evaluate held/collapsed with new thresholds
   const yr=E.yesterdayRockets;
   let held=0,collapsed=0;
   yr.forEach(r=>{
-    // Re-check if this stock qualifies as a rocket under new threshold
     r._show=r.yesterdayChg>=rocketPct;
     if(!r._show) return;
-    const collapseThreshold=-(r.yesterdayChg*holdFactor);
-    r._newHeld=r.todayChg!=null&&r.todayChg>collapseThreshold;
-    r._newCollapse=+collapseThreshold.toFixed(2);
+    // Use peak retention (already computed at engine run time, stored in r.peakRetention)
+    r._newHeld=r.peakRetention!=null?r.peakRetention>=50:(r.todayChg!=null&&r.todayChg>0);
     if(r._newHeld) held++; else collapsed++;
   });
   const visible=yr.filter(r=>r._show);
-  // Find the panel container — it's inside methContent
   const panel=document.getElementById('qualityPanelBody');
   if(!panel) return;
   if(!visible.length){
@@ -1933,7 +1922,6 @@ function updateQualityPanel(){
   }
   const scoreMap={};
   ALL.forEach((s,i)=>{scoreMap[s.symbol]={score:s.rocketScore,rank:i+1};});
-  // Sort by action priority
   const prioritized=visible.map(r=>{
     const s=scoreMap[r.symbol];
     let pri=4;
@@ -1943,24 +1931,26 @@ function updateQualityPanel(){
     else pri=3;
     return {...r,_pri:pri,_score:s?s.score:0};
   }).sort((a,b)=>a._pri!==b._pri?a._pri-b._pri:b._score-a._score);
-  let tbl='<table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
+  let tbl='<div style="overflow-x:auto"><table class="ct"><thead><tr><th>Symbol</th><th>Yesterday</th><th>Today Chg%</th><th>Peak Ret%</th><th>Today Score</th><th>Rank</th><th>Action</th></tr></thead><tbody>';
   for(const r of prioritized){
     const todayStr=r.todayChg!=null?((r.todayChg>=0?'+':'')+r.todayChg.toFixed(2)+'%'):'—';
     const todayC=r.todayChg!=null?(r.todayChg>=0?'var(--green)':'var(--red)'):'var(--t3)';
+    const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(1)+'%':'—';
+    const peakC=r.peakRetention!=null?(r.peakRetention>=50?'var(--green)':'var(--red)'):'var(--t3)';
     const s=scoreMap[r.symbol];
     const scoreStr=s?s.score.toFixed(1):'—';
     const scoreC=s?(s.score>=78?'var(--fire)':s.score>=64?'var(--green)':'var(--t3)'):'var(--t3)';
     const rankStr=s?'#'+s.rank:'—';
     let action,actionC;
     if(!r.inToday){action='AVOID — filtered out';actionC='var(--red)';}
-    else if(s&&s.score>=64&&r.todayChg!=null&&r.todayChg>=-2){action='BUY — momentum confirmed';actionC='var(--green)';}
-    else if(s&&s.score>=50&&r.todayChg!=null&&r.todayChg>=0){action='WATCH — moderate score';actionC='var(--cyan)';}
-    else if(r.todayChg!=null&&r.todayChg<-3){action='SKIP — fading fast';actionC='var(--red)';}
-    else {action='SKIP — weak follow-through';actionC='var(--orange)';}
-    tbl+='<tr><td style="font-weight:700">'+r.symbol+'</td><td style="color:var(--fire);font-weight:600">+'+r.yesterdayChg.toFixed(2)+'%</td><td style="color:'+todayC+';font-weight:600">'+todayStr+'</td><td style="color:'+scoreC+';font-weight:600">'+scoreStr+'</td><td style="color:var(--t3)">'+rankStr+'</td><td style="color:'+actionC+';font-weight:700;font-size:11px">'+action+'</td></tr>';
+    else if(s&&s.score>=64&&r._newHeld){action='BUY — momentum confirmed';actionC='var(--green)';}
+    else if(s&&s.score>=50&&r._newHeld){action='WATCH — moderate score';actionC='var(--cyan)';}
+    else if(!r._newHeld){action='SKIP — fading';actionC='var(--red)';}
+    else{action='SKIP — weak score';actionC='var(--orange)';}
+    tbl+='<tr><td style="font-weight:700">'+r.symbol+'</td><td style="color:var(--fire);font-weight:600">+'+r.yesterdayChg.toFixed(2)+'%</td><td style="color:'+todayC+';font-weight:600">'+todayStr+'</td><td style="color:'+peakC+';font-weight:600">'+peakStr+'</td><td style="color:'+scoreC+';font-weight:600">'+scoreStr+'</td><td style="color:var(--t3)">'+rankStr+'</td><td style="color:'+actionC+';font-weight:700;font-size:11px">'+action+'</td></tr>';
   }
-  tbl+='</tbody></table>';
-  tbl+='<p style="font-size:10px;color:var(--t3);margin-top:6px">Engine learning: <strong style="color:var(--green)">'+held+' held</strong> (reinforced) · <strong style="color:var(--red)">'+collapsed+' collapsed</strong> (unlearned) · Thresholds apply on next upload.</p>';
+  tbl+='</tbody></table></div>';
+  tbl+='<p style="font-size:10px;color:var(--t3);margin-top:6px">Engine learning: <strong style="color:var(--green)">'+held+' held</strong> (peak ret ≥50%, reinforced) · <strong style="color:var(--red)">'+collapsed+' collapsed</strong> (label=0)</p>';
   panel.innerHTML=tbl;
 }
 
@@ -3463,7 +3453,6 @@ function saveFilterState(){
     capital:document.getElementById('fCapital').value,
     topN:document.getElementById('fTopN')?.value||'',
     rocketPct:document.getElementById('fRocketPct')?.value||'10',
-    holdFactor:document.getElementById('fHoldFactor')?.value||'0.3',
     reDrop:document.getElementById('fReDrop')?.value||'1',
     fmaxalloc:document.getElementById('fMaxAlloc')?.value||'',
     fMinScore:document.getElementById('fMinScore')?.value||'70',
@@ -3488,7 +3477,6 @@ function loadFilterState(){
     if(state.capital)document.getElementById('fCapital').value=state.capital;
     if(state.topN){const el=document.getElementById('fTopN');if(el)el.value=state.topN;}
     if(state.rocketPct){const el=document.getElementById('fRocketPct');if(el)el.value=state.rocketPct;}
-    if(state.holdFactor){const el=document.getElementById('fHoldFactor');if(el)el.value=state.holdFactor;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
     if(state.fmaxalloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.fmaxalloc;}
     if(state.fMinScore){const el=document.getElementById('fMinScore');if(el)el.value=state.fMinScore;}
