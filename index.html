@@ -166,12 +166,10 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 .kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:4px}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
 .kpi-val{font-size:20px;font-weight:800;font-family:'DM Mono',monospace}
-.perf-2col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
 @media(max-width:768px){
   .kpi-grid{grid-template-columns:repeat(3,1fr)}
   .kpi-card{padding:12px 14px}
   .kpi-val{font-size:16px}
-  .perf-2col{grid-template-columns:1fr;gap:12px}
 }
 @media(max-width:480px){
   .kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px}
@@ -1594,10 +1592,10 @@ function renderPerformance(){
         {key:'netPnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
       ];
       const latestTbl=makeSortableTable('perf-latest',latestCols,latestRows,'_sort',-1);
-      todayHtml=`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.08em">Latest Session — ${latestDate} <span style="font-size:10px;font-weight:400;color:var(--t3)">(${latestSource})</span></div>
-          <div style="font-size:16px;font-weight:800;color:${clr(latestTotal)};font-family:'DM Mono',monospace">${fmtRs(latestTotal)} <span style="font-size:10px;color:var(--t3);font-weight:400">net of charges</span></div>
+      todayHtml=`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden">
+        <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border)">
+          <span style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.1em">Latest Session — ${latestDate} <span style="font-size:10px;font-weight:400;color:var(--t3)">(${latestSource})</span></span>
+          <span style="font-size:16px;font-weight:800;color:${clr(latestTotal)};font-family:'DM Mono',monospace">${fmtRs(latestTotal)} <span style="font-size:10px;color:var(--t3);font-weight:400">net of charges</span></span>
         </div>
         <div style="overflow-x:auto">${latestTbl.getHtml()}</div>
       </div>`;
@@ -1623,34 +1621,27 @@ function renderPerformance(){
     ${regimePills}
   </div>`;
 
-  el.innerHTML=`
-    <div style="padding:20px;max-width:1400px;margin:0 auto">
-      ${todayHtml}
-      ${regimePillsHtml}
-      <div style="font-size:11px;color:var(--t3);margin-bottom:8px">${periodLabel} · ${p.roundTrips} lots · "Lots" = FIFO-matched buy/sell pairs, one position may span multiple lots. Monthly table shows full history.</div>
-      ${kpiHtml}
-      ${monthRows.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:20px">
-        <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em">Monthly Breakdown</div>
-        <div style="overflow-x:auto">${monthTbl.getHtml()}</div></div>`:''}
-      <div class="perf-2col">
-        ${p.symBreakdown.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px">
-          <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em">Stocks — Last 30 Days</div>
-          <div style="overflow-x:auto">${symTbl.getHtml()}</div></div>`:''}
-        ${p.hourBreakdown.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px">
-          <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em">Buy Hour — Last 30 Days</div>
-          <div style="overflow-x:auto">${hourTbl.getHtml()}</div></div>`:''}
-      </div>
+  const perfCard=(title,content)=>`
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-top:16px;overflow:hidden">
+      <div style="padding:14px 18px 10px;font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border)">${title}</div>
+      <div style="overflow-x:auto">${content}</div>
     </div>`;
 
-  // Render all tables after DOM is ready, then equalise widths
-  setTimeout(()=>{
-    monthTbl.render();symTbl.render();hourTbl.render();
-    setTimeout(()=>{
-      const ids=['perf-latest','perf-month','perf-sym','perf-hour'];
-      const maxW=ids.reduce((m,id)=>{const t=document.getElementById(id);return t?Math.max(m,t.scrollWidth):m;},0);
-      if(maxW>0) ids.forEach(id=>{const t=document.getElementById(id);if(t) t.style.minWidth=maxW+'px';});
-    },0);
-  },0);
+  el.innerHTML=`
+    <div style="padding:16px;max-width:900px;margin:0 auto">
+      ${todayHtml}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <span style="font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.08em">Regime</span>
+        ${regimePills}
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:14px">${periodLabel} · ${p.roundTrips} lots</div>
+      ${kpiHtml}
+      ${monthRows.length?perfCard('Monthly Breakdown',monthTbl.getHtml()):''}
+      ${p.symBreakdown.length?perfCard('Stocks — Last 30 Days',symTbl.getHtml()):''}
+      ${p.hourBreakdown.length?perfCard('Buy Hour — Last 30 Days',hourTbl.getHtml()):''}
+    </div>`;
+
+  setTimeout(()=>{monthTbl.render();symTbl.render();hourTbl.render();},0);
 }
 
 function renderMethodology(){
