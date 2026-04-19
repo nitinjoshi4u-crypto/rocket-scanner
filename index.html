@@ -28,7 +28,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 @keyframes pg{0%,100%{box-shadow:0 0 20px rgba(249,115,22,.25)}50%{box-shadow:0 0 32px rgba(249,115,22,.45)}}
 .brand h1{font-size:22px;font-weight:800;letter-spacing:-.4px}
 .brand h1 em{font-style:normal;background:linear-gradient(135deg,var(--fire),var(--fire2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.brand-tag{font-size:11px;color:var(--t3);margin-top:1px;font-weight:500}
+.brand-tag{font-size:11px;color:var(--t2);margin-top:1px;font-weight:500}
 .hdr-r{display:flex;gap:10px;align-items:center}
 #fileTag{font-size:11px;color:var(--t3);font-family:'DM Mono',monospace}
 .upl{border:2px dashed var(--border-hi);border-radius:16px;padding:52px 40px;text-align:center;cursor:pointer;transition:all .3s;max-width:680px;margin:60px auto;background:var(--bg-card)}
@@ -260,7 +260,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 <div class="hdr">
  <div class="brand">
   <div class="brand-ico">🚀</div>
-  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div id="builtLabel" style="font-size:9px;color:var(--t3);margin-top:1px"></div></div>
+  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div id="builtLabel" style="font-size:9px;color:var(--t2);margin-top:1px"></div></div>
  </div>
  <div class="hdr-r" id="hdrR">
   <span id="fileTag"></span>
@@ -376,6 +376,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 <script>
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
+let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let ENGINE_DATA={};
 let REMOVED={uc:0,surv:0,liq:0,fscore:0,atr:0,deliv:0};
 let SUPPRESSED_HELD=0; // count of stocks hidden because already held in POSITIONS
@@ -390,6 +391,7 @@ const CORR_BULL_STORE='rs_corr_bull';
 const CORR_BEAR_STORE='rs_corr_bear';
 const CORR_NEUT_STORE='rs_corr_neutral';
 const METH_STORE='rs_meth';
+const REGIME_CAL_STORE='rs_regime_cal';
 const HOLD_STORE='rs_holdings';
 const TRADEBOOK_STORE='rs_tradebook';
 const ORDERS_STORE='rs_orders';
@@ -1167,6 +1169,10 @@ function runEngine(raw, sessionTag){
       regime:ENGINE_DATA.regime,marketBreadth:ENGINE_DATA.marketBreadth,regimeSessions:ENGINE_DATA.regimeSessions,useRegimeCorr:ENGINE_DATA.useRegimeCorr,sectorCol:ENGINE_DATA.sectorCol,industryCol:ENGINE_DATA.industryCol,
       yesterdayRockets:yesterdayRockets,goodFromYesterday:goodFromYesterday,badFromYesterday:badFromYesterday,qualityTargetN:qualityN,holdFactor:holdFactor,totalParsed:totalParsed};
     localStorage.setItem(METH_STORE,JSON.stringify(methSave));
+    // Update regime calendar: date → regime
+    const regCal=JSON.parse(localStorage.getItem(REGIME_CAL_STORE)||'{}');
+    regCal[getSessionDate()]=regime;
+    localStorage.setItem(REGIME_CAL_STORE,JSON.stringify(regCal));
   }catch(e){console.warn('Could not save methodology data',e);}
   return results;
 }
@@ -1439,14 +1445,27 @@ function renderPerformance(){
   const fmtRs=(v)=>(v>=0?'+':'-')+'₹'+Math.abs(v).toLocaleString('en-IN');
   const fmtPct=(v)=>(v>=0?'+':'')+v.toFixed(2)+'%';
 
-  // ── Last 30 trading days slice ──
-  const allTrips=tb.tripsData||[];
-  const allSellDates=[...new Set(allTrips.map(r=>r.sellDate))].sort();
+  // ── Regime calendar: date → regime ──
+  const regCal=JSON.parse(localStorage.getItem(REGIME_CAL_STORE)||'{}');
+  const currentRegime=ENGINE_DATA?.regime||null;
+  // Default filter to current regime if we have one, else 'all'
+  if(PERF_REGIME_FILTER==='all' && currentRegime) PERF_REGIME_FILTER=currentRegime;
+
+  // ── Tag all trips with regime from calendar (by buyDate) ──
+  const allTripsRaw=tb.tripsData||[];
+  const allTrips=allTripsRaw.map(r=>({...r, regime: regCal[r.buyDate]||'?'}));
+
+  // ── Regime filter ──
+  const filteredByRegime=PERF_REGIME_FILTER==='all'?allTrips:allTrips.filter(r=>r.regime===PERF_REGIME_FILTER);
+
+  // ── Last 30 trading days slice (within regime filter) ──
+  const allSellDates=[...new Set(filteredByRegime.map(r=>r.sellDate))].sort();
   const last30Dates=new Set(allSellDates.slice(-30));
-  const recentTrips=allTrips.filter(r=>last30Dates.has(r.sellDate));
-  const p=recentTrips.length?computePerfStats(recentTrips):computePerfStats(allTrips);
+  const recentTrips=filteredByRegime.filter(r=>last30Dates.has(r.sellDate));
+  const p=recentTrips.length?computePerfStats(recentTrips):computePerfStats(filteredByRegime);
   const d30from=[...last30Dates][0], d30to=[...last30Dates].at(-1);
-  const periodLabel=recentTrips.length?`Last 30 trading days (${d30from} → ${d30to})`:'All time';
+  const regimeLabel=PERF_REGIME_FILTER==='all'?'All regimes':PERF_REGIME_FILTER==='bull'?'🐂 Bull':PERF_REGIME_FILTER==='bear'?'🐻 Bear':'➡ Neutral';
+  const periodLabel=recentTrips.length?`Last 30 trading days (${d30from} → ${d30to}) · ${regimeLabel}`:`All time · ${regimeLabel}`;
 
   // ── KPI cards — based on last 30 trading days ──
   const _kelly=p.kellyPct;
@@ -1481,7 +1500,14 @@ function renderPerformance(){
     {key:'days',label:'Days',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
     {key:'avgDay',label:'Avg/Day',align:'right',fmt:fmtRs,clrFn:clr},
   ];
-  const monthRows=(tb.monthlyPnl||[]).map(m=>({...m,avgDay:m.days?Math.round(m.pnl/m.days):0}));
+  // Recompute monthly breakdown from regime-filtered trips (full history, not just last 30)
+  const monthMap={};
+  filteredByRegime.forEach(r=>{
+    const ym=r.sellDate.substring(0,7);
+    if(!monthMap[ym]) monthMap[ym]={month:ym,pnl:0,trades:0,days:0,_dates:new Set()};
+    monthMap[ym].pnl+=r.netPnl; monthMap[ym].trades++; monthMap[ym]._dates.add(r.sellDate);
+  });
+  const monthRows=Object.values(monthMap).map(m=>({month:m.month,pnl:+m.pnl.toFixed(0),trades:m.trades,days:m._dates.size,avgDay:m._dates.size?Math.round(m.pnl/m._dates.size):0}));
   const monthTbl=makeSortableTable('perf-month',monthCols,monthRows,'month',-1);
 
   // ── Stocks table — last 30 days ──
@@ -1581,9 +1607,26 @@ function renderPerformance(){
     }
   }
 
+  // ── Regime filter pills HTML ──
+  const regimePills=['all','bull','bear','neutral'].map(r=>{
+    const active=PERF_REGIME_FILTER===r;
+    const label=r==='all'?'All':r==='bull'?'🐂 Bull':r==='bear'?'🐻 Bear':'➡ Neutral';
+    const cnt=r==='all'?allTrips.length:allTrips.filter(t=>t.regime===r).length;
+    const unknownCnt=r==='all'?allTrips.filter(t=>t.regime==='?').length:0;
+    const cntLabel=r==='all'?` (${cnt}${unknownCnt?', '+unknownCnt+' untagged':''})`:` (${cnt})`;
+    const col=r==='bull'?'var(--green)':r==='bear'?'var(--red)':r==='neutral'?'var(--orange)':'var(--t2)';
+    const bg=active?(r==='bull'?'rgba(34,197,94,.15)':r==='bear'?'rgba(239,68,68,.15)':r==='neutral'?'rgba(251,146,60,.15)':'rgba(148,163,184,.15)'):'transparent';
+    return `<button onclick="PERF_REGIME_FILTER='${r}';renderPerformance()" style="padding:5px 14px;border-radius:20px;border:1px solid ${active?col:'var(--border)'};background:${bg};color:${active?col:'var(--t3)'};font-size:12px;font-weight:${active?700:500};cursor:pointer;white-space:nowrap">${label}<span style="font-size:10px;opacity:.7">${cntLabel}</span></button>`;
+  }).join('');
+  const regimePillsHtml=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <span style="font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Regime</span>
+    ${regimePills}
+  </div>`;
+
   el.innerHTML=`
     <div style="padding:20px;max-width:1400px;margin:0 auto">
       ${todayHtml}
+      ${regimePillsHtml}
       <div style="font-size:11px;color:var(--t3);margin-bottom:8px">${periodLabel} · ${p.roundTrips} lots · "Lots" = FIFO-matched buy/sell pairs, one position may span multiple lots. Monthly table shows full history.</div>
       ${kpiHtml}
       ${monthRows.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:20px">
@@ -2457,7 +2500,7 @@ function hideUploadScreen(){
 function exportBrain(){
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
+    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
   ];
   const brain={_exported:new Date().toISOString(), _version:'rscanner_brain_v1'};
   let totalSize=0;
@@ -2497,7 +2540,7 @@ function importBrain(event){
       }
       const BRAIN_KEYS=[
         CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
+        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
       ];
       // Also map v4 keys → v5 keys for backward-compatible brain imports
       const V4_MAP={
@@ -2562,7 +2605,7 @@ function resetBrain(btn){
   // Stage 3: confirmed — wipe everything
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, SCANNER_STORE,
+    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE,
     HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
   ];
   BRAIN_KEYS.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
