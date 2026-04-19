@@ -3079,7 +3079,7 @@ function exportBasket(){
         quantity:qty,price:parseFloat(tick(buyPrice).toFixed(2)),
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
-        gtt:{target:parseFloat(tgt.toFixed(2)),sl:parseFloat(sl.toFixed(2))},
+        gtt:{target:parseFloat(tgt.toFixed(2)),stoploss:parseFloat((-sl).toFixed(2))},
         tags:[]
       }
     });
@@ -3125,9 +3125,6 @@ function exportSellBasket(){
     const atr1w=atr1wMap[sym]??null;
     const slPct=atr1w!=null?Math.max(adaptiveSL,1.25*atr1w):adaptiveSL;
     const tgtPct=atr1w!=null?Math.max(adaptiveTGT,0.75*atr1w):adaptiveTGT;
-    const tgtPrice=avgBuy*(1+tgtPct/100);
-    const slPrice=avgBuy*(1-slPct/100);
-
     orders.push({
       id:orderId++,
       instrument:{
@@ -3143,10 +3140,10 @@ function exportSellBasket(){
       params:{
         transactionType:'SELL',product:'CNC',orderType:'LIMIT',
         validity:'DAY',validityTTL:1,
-        quantity:qty,price:parseFloat(tick(tgtPrice).toFixed(2)),
+        quantity:qty,price:parseFloat(avgBuy.toFixed(2)),
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
-        gtt:{target:parseFloat(tick(tgtPrice).toFixed(2)),sl:parseFloat(tick(slPrice).toFixed(2))},
+        gtt:{target:parseFloat(tgtPct.toFixed(2)),stoploss:parseFloat((-slPct).toFixed(2))},
         tags:[]
       }
     });
