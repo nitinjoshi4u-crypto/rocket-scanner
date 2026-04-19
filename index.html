@@ -1570,12 +1570,12 @@ function renderPerformance(){
         {key:'netPnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
       ];
       const latestTbl=makeSortableTable('perf-latest',latestCols,latestRows,'_sort',-1);
-      todayHtml=`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      todayHtml=`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 0;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:14px;padding:0 18px">
           <div style="font-size:12px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.08em">Latest Session — ${latestDate} <span style="font-size:10px;font-weight:400;color:var(--t3)">(${latestSource})</span></div>
           <div style="font-size:16px;font-weight:800;color:${clr(latestTotal)};font-family:'DM Mono',monospace">${fmtRs(latestTotal)} <span style="font-size:10px;color:var(--t3);font-weight:400">net of charges</span></div>
         </div>
-        <div style="overflow-x:auto">${latestTbl.getHtml()}</div>
+        <div style="overflow-x:auto;padding:0 18px">${latestTbl.getHtml()}</div>
       </div>`;
       setTimeout(()=>{latestTbl.render();},0);
     }
@@ -1586,9 +1586,9 @@ function renderPerformance(){
       ${todayHtml}
       <div style="font-size:11px;color:var(--t3);margin-bottom:8px">${periodLabel} · ${p.roundTrips} lots · "Lots" = FIFO-matched buy/sell pairs, one position may span multiple lots. Monthly table shows full history.</div>
       ${kpiHtml}
-      ${monthRows.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:20px">
-        <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em">Monthly Breakdown</div>
-        <div style="overflow-x:auto">${monthTbl.getHtml()}</div></div>`:''}
+      ${monthRows.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 0;margin-top:20px">
+        <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em;padding:0 18px">Monthly Breakdown</div>
+        <div style="overflow-x:auto;padding:0 18px">${monthTbl.getHtml()}</div></div>`:''}
       <div class="perf-2col">
         ${p.symBreakdown.length?`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px">
           <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em">Stocks — Last 30 Days</div>
