@@ -439,7 +439,7 @@ let CURRENT_REGIME='neutral'; // bull | bear | neutral
 const REGIME_THRESHOLDS={bull:0.55, bear:0.35}; // breadth % thresholds
 
 // ── Version system (auto-increments on code change) ──
-const BUILT='2026-04-19 10:00 IST';
+const BUILT=(()=>{const d=new Date(document.lastModified);if(isNaN(d))return'';const dd=d=>String(d).padStart(2,'0');return d.getFullYear()+'-'+dd(d.getMonth()+1)+'-'+dd(d.getDate())+' '+dd(d.getHours())+':'+dd(d.getMinutes())+' IST';})();
 const VER_STORE='rscanner_ver';
 const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([src])')?.textContent||'';for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;})();
 (function initVersion(){
@@ -1334,7 +1334,7 @@ function makeSortableTable(id, cols, rows, defaultSortKey, defaultDir=-1){
       };
     });
   }
-  return {render,getHtml:()=>`<table id="${id}" style="width:auto;min-width:100%;border-collapse:collapse;font-size:12px;font-family:'DM Mono',monospace"></table>`};
+  return {render,getHtml:()=>`<table id="${id}" style="width:100%;border-collapse:collapse;font-size:12px;font-family:'DM Mono',monospace"></table>`};
 }
 
 // Recompute KPI stats from an array of {netPnl, pnlPct, sellDate, buyTime, sym, holdDays, capital, qty, buyDate} trips
@@ -1599,8 +1599,15 @@ function renderPerformance(){
       </div>
     </div>`;
 
-  // Render all tables after DOM is ready
-  setTimeout(()=>{monthTbl.render();symTbl.render();hourTbl.render();},0);
+  // Render all tables after DOM is ready, then equalise widths
+  setTimeout(()=>{
+    monthTbl.render();symTbl.render();hourTbl.render();
+    setTimeout(()=>{
+      const ids=['perf-latest','perf-month','perf-sym','perf-hour'];
+      const maxW=ids.reduce((m,id)=>{const t=document.getElementById(id);return t?Math.max(m,t.scrollWidth):m;},0);
+      if(maxW>0) ids.forEach(id=>{const t=document.getElementById(id);if(t) t.style.minWidth=maxW+'px';});
+    },0);
+  },0);
 }
 
 function renderMethodology(){
