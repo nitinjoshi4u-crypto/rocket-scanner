@@ -209,7 +209,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 }
 #mobileMenuBtn{display:none}
 @media(max-width:768px){
-  .hdr-r .btn:not(#loadFilesBtn){display:none}
+  .hdr-r>.btn:not(#loadFilesBtn){display:none}
   #mobileMenuBtn{display:flex}
 }
 @media(max-width:480px){
@@ -260,7 +260,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 <div class="hdr">
  <div class="brand">
   <div class="brand-ico">🚀</div>
-  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div></div>
+  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div id="builtLabel" style="font-size:9px;color:var(--t3);margin-top:1px"></div></div>
  </div>
  <div class="hdr-r" id="hdrR">
   <span id="fileTag"></span>
@@ -438,6 +438,7 @@ let CURRENT_REGIME='neutral'; // bull | bear | neutral
 const REGIME_THRESHOLDS={bull:0.55, bear:0.35}; // breadth % thresholds
 
 // ── Version system (auto-increments on code change) ──
+const BUILT='2026-04-19';
 const VER_STORE='rscanner_ver';
 const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([src])')?.textContent||'';for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;})();
 (function initVersion(){
@@ -449,6 +450,8 @@ const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([
     const lbl=document.getElementById('verLabel');
     if(lbl) lbl.textContent='v'+ver;
     document.title='NSE Rocket Scanner v'+ver;
+    const bl=document.getElementById('builtLabel');
+    if(bl) bl.textContent='Updated '+BUILT;
   }catch(e){
     const lbl=document.getElementById('verLabel');
     if(lbl) lbl.textContent='v5';
