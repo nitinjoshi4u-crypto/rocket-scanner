@@ -449,7 +449,7 @@ const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([
   try{
     const stored=JSON.parse(localStorage.getItem(VER_STORE)||'{}');
     let ver=stored.ver||5;
-    if(stored.hash && stored.hash!==CODE_HASH) ver++; // code changed → bump
+    if(stored.hash && stored.hash!==CODE_HASH){ver++;try{localStorage.removeItem('rs_atr1w');}catch(e){}} // code changed → bump + purge stale ATR map
     localStorage.setItem(VER_STORE,JSON.stringify({ver,hash:CODE_HASH}));
     const lbl=document.getElementById('verLabel');
     if(lbl) lbl.textContent='v'+ver;
