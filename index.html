@@ -351,8 +351,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stocks in open Positions are hidden unless price has fallen at least this % below your avg buy (long). Shorts and zero-qty positions are always suppressed. Default 1%."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="3" max="30" step="0.5" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:var(--fire);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='rgba(249,115,22,.4)'" oninput="saveFilterState()" title="Min 1D% gain yesterday to count as a rocket for learning signal."></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--red)">SL ATR ×</span><input type="number" id="fSlAtrMult" value="1.25" placeholder="1.25" min="0" max="5" step="0.05" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(239,68,68,.4);border-radius:8px;color:var(--red);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--red)'" onblur="this.style.borderColor='rgba(239,68,68,.4)'" oninput="saveFilterState()" title="SL = max(adaptiveSL, this × ATR% 1W)"></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--green)">TGT ATR ×</span><input type="number" id="fTgtAtrMult" value="0.5" placeholder="0.5" min="0" max="5" step="0.05" style="padding:8px 10px;background:var(--bg-card);border:1px solid rgba(34,197,94,.4);border-radius:8px;color:var(--green);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='rgba(34,197,94,.4)'" oninput="saveFilterState()" title="TGT = max(adaptiveTGT, this × ATR% 1W)"></div>
+
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket</button>
    <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" disabled style="background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:var(--red);font-weight:700" title="Show GTT values to enter manually in Zerodha">📋 GTT Values</button>
   </div>
@@ -393,7 +392,6 @@ const HOLD_STORE='rs_holdings';
 const TRADEBOOK_STORE='rs_tradebook';
 const ORDERS_STORE='rs_orders';
 const POSITIONS_STORE='rs_positions';
-const ATR1W_STORE='rs_atr1w';
 let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct, winRate, avgHoldDays, p25Loss, p75Win, adaptiveSL, adaptiveTGT, minExitPct, roundTrips}
 
 // ── One-time key migration: move old versioned keys → clean names ──
@@ -435,7 +433,6 @@ let NSE_BHAV={},NSE_52W={},NSE_SURV={},NSE_BULK={},NSE_BLOCK={};
 let HOLDINGS=[]; // active holdings from Holdings.csv (qty>0)
 let HOLDINGS_ALL=[]; // all holdings rows from Holdings.csv, including qty=0 closed holdings
 let POSITIONS=[]; // open positions from Positions.csv (T+1 unsettled buys)
-let ATR1W_MAP={}; // persistent {symbol: atr1w%} — merged across scans so holdings not in today's scan still have ATR
 // Regime-conditional accumulators
 let ACC_CORR_BULL=null, ACC_CORR_BEAR=null, ACC_CORR_NEUT=null;
 let CURRENT_REGIME='neutral'; // bull | bear | neutral
@@ -449,7 +446,7 @@ const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([
   try{
     const stored=JSON.parse(localStorage.getItem(VER_STORE)||'{}');
     let ver=stored.ver||5;
-    if(stored.hash && stored.hash!==CODE_HASH){ver++;try{localStorage.removeItem('rs_atr1w');}catch(e){}} // code changed → bump + purge stale ATR map
+    if(stored.hash && stored.hash!==CODE_HASH) ver++; // code changed → bump
     localStorage.setItem(VER_STORE,JSON.stringify({ver,hash:CODE_HASH}));
     const lbl=document.getElementById('verLabel');
     if(lbl) lbl.textContent='v'+ver;
@@ -2222,7 +2219,7 @@ function renderTable(){
     const isSelected=SELECTED.has(s.symbol);
     const am=allocMap[s.symbol];
 
-    const {sl:_sl,tgt:_tgt}=calcAtrSLTGT(s);
+    const {sl:_sl,tgt:_tgt}=calcAtrSLTGT();
 
     // Fixed cells
     let cells=`
@@ -2285,8 +2282,8 @@ function applySort(){
       va=a._features?a._features[fk]:null;
       vb=b._features?b._features[fk]:null;
     } else if(col==='_sl'||col==='_tgt'){
-      va=col==='_sl'?calcAtrSLTGT(a).sl:calcAtrSLTGT(a).tgt;
-      vb=col==='_sl'?calcAtrSLTGT(b).sl:calcAtrSLTGT(b).tgt;
+      va=col==='_sl'?calcAtrSLTGT().sl:calcAtrSLTGT().tgt;
+      vb=col==='_sl'?calcAtrSLTGT().sl:calcAtrSLTGT().tgt;
     } else {
       va=a[col];vb=b[col];
     }
@@ -2488,7 +2485,7 @@ function hideUploadScreen(){
 function exportBrain(){
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE, ATR1W_STORE
+    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE
   ];
   const brain={_exported:new Date().toISOString(), _version:'rscanner_brain_v1'};
   let totalSize=0;
@@ -2528,7 +2525,7 @@ function importBrain(event){
       }
       const BRAIN_KEYS=[
         CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE, ATR1W_STORE
+        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE
       ];
       // Also map v4 keys → v5 keys for backward-compatible brain imports
       const V4_MAP={
@@ -3065,18 +3062,12 @@ function getSellAvgPrice(symbol){
   return null;
 }
 
-// ── Shared ATR-adjusted SL/TGT calculator ──
-// Returns {sl, tgt} percentages for a given stock, using filter bar multipliers.
-function calcAtrSLTGT(s){
-  const slAtrMult=parseFloat(document.getElementById('fSlAtrMult')?.value)||1.25;
-  const tgtAtrMult=parseFloat(document.getElementById('fTgtAtrMult')?.value)||0.5;
-  const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
-  const adaptiveTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
-  const atr1w=s.atr1w>0?s.atr1w:null;
-  return {
-    sl:  atr1w!=null ? Math.max(adaptiveSL,  slAtrMult*atr1w)  : adaptiveSL,
-    tgt: atr1w!=null ? Math.max(adaptiveTGT, tgtAtrMult*atr1w) : adaptiveTGT,
-  };
+// ── Shared SL/TGT calculator — adaptive from tradebook, fixed defaults ──
+// Returns {sl, tgt} as positive percentages.
+function calcAtrSLTGT(){
+  const sl=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
+  const tgt=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+  return {sl, tgt};
 }
 
 function exportBasket(){
@@ -3085,10 +3076,7 @@ function exportBasket(){
   if(!selList.length){showToast('Select at least one stock first.',3000,true);return;}
   const basketAlloc = computeAlloc(capital, selList);
   const tick=v=>Math.round(v/0.05)*0.05;
-  // Build atr1w lookup: persistent map first, then today's ALL overrides (covers stale selList stocks)
-  const atr1wIndex={...ATR1W_MAP};
-  ALL.forEach(s=>{if(s.atr1w>0) atr1wIndex[s.symbol]=s.atr1w;});
-
+  const {sl,tgt}=calcAtrSLTGT();
   const orders=[];
   let rejectedCount=0;
   selList.forEach((s,i)=>{
@@ -3099,9 +3087,6 @@ function exportBasket(){
     const ltp=s.price>0?s.price:0;
     const sym=s.symbol;
     const name=s.name||sym;
-    // Use shared helper; fall back atr1w from ALL index if selList stock is stale
-    const sWithAtr={...s, atr1w: (s.atr1w>0?s.atr1w:null)??atr1wIndex[sym]??0};
-    const {sl,tgt}=calcAtrSLTGT(sWithAtr);
     orders.push({
       id:Date.now()+i,
       instrument:{
@@ -3134,10 +3119,7 @@ function exportBasket(){
 
 function showGttPopup(){
   const tick=v=>Math.round(v/0.05)*0.05;
-  // Build ATR1W lookup: today's scan first, then persistent map (covers holdings not in today's scan)
-  const atr1wMap={...ATR1W_MAP};
-  ALL.forEach(s=>{if(s.atr1w>0) atr1wMap[s.symbol]=s.atr1w;});
-
+  const {sl:_sl,tgt:_tgt}=calcAtrSLTGT();
   // Collect rows: settled holdings + open long positions (T+1 unsettled)
   const rowMap={};
   (HOLDINGS||[]).forEach(h=>{
@@ -3166,7 +3148,7 @@ function showGttPopup(){
     // LTP priority: ALL scanner > positions CSV > holdings CSV
     const allStock=ALL.find(s=>s.symbol===r.symbol);
     const ltp=allStock?.ltp ?? r.posLtp ?? r.holdLtp ?? null;
-    const {sl:slPct,tgt:tgtPct}=calcAtrSLTGT({atr1w:atr1wMap[r.symbol]??0});
+    const slPct=_sl, tgtPct=_tgt;
     const tgtPrice=avgBuy>0?parseFloat(tick(avgBuy*(1+tgtPct/100)).toFixed(2)):null;
     const slPrice=avgBuy>0?parseFloat(tick(avgBuy*(1-slPct/100)).toFixed(2)):null;
     const pnlPct=(ltp!=null&&ltp>0&&avgBuy>0)?((ltp-avgBuy)/avgBuy*100):null;
@@ -3216,7 +3198,7 @@ function showGttPopup(){
         </tr></thead>
         <tbody>${tbodyHtml}</tbody>
       </table>
-      <div style="margin-top:12px;font-size:11px;color:var(--t3)">SL ATR × ${parseFloat(document.getElementById('fSlAtrMult')?.value||1.25)} &nbsp;|&nbsp; TGT ATR × ${parseFloat(document.getElementById('fTgtAtrMult')?.value||0.5)} &nbsp;|&nbsp; Prices tick-rounded to ₹0.05</div>
+      <div style="margin-top:12px;font-size:11px;color:var(--t3)">SL ${_sl.toFixed(1)}% &nbsp;|&nbsp; TGT ${_tgt.toFixed(1)}% &nbsp;|&nbsp; Adaptive from tradebook &nbsp;|&nbsp; Prices tick-rounded to ₹0.05</div>
     </div>`;
   // Close on backdrop click
   overlay.addEventListener('click',e=>{if(e.target===overlay) overlay.remove();});
@@ -3365,9 +3347,6 @@ async function processFiles(files){
     const sessionTag=getSessionDate()+':'+_period; // e.g. "2026-04-16:0" / ":1" / ":2"
     ALL=runEngine(raw, sessionTag);
     ALL.sort((a,b)=>b.rocketScore-a.rocketScore);
-    // Merge ATR1W from this scan into persistent map — preserves values for holdings not in today's scan
-    ALL.forEach(s=>{if(s.atr1w>0) ATR1W_MAP[s.symbol]=s.atr1w;});
-    try{localStorage.setItem(ATR1W_STORE,JSON.stringify(ATR1W_MAP));}catch(e){}
     // Save scan results only — engineData is too large (N² interCorr matrix)
     try{
       // Trim data for storage — exclude heavy display-only fields
@@ -3530,8 +3509,6 @@ function saveFilterState(){
     fMax1D:document.getElementById('fMax1D')?.value||'',
     rocketPct:document.getElementById('fRocketPct')?.value||'10',
     reDrop:document.getElementById('fReDrop')?.value||'1',
-    slAtrMult:document.getElementById('fSlAtrMult')?.value||'1.25',
-    tgtAtrMult:document.getElementById('fTgtAtrMult')?.value||'0.5',
     fmaxalloc:document.getElementById('fMaxAlloc')?.value||'',
     fMinScore:document.getElementById('fMinScore')?.value||'70',
     sortCol:SCOL,
@@ -3554,8 +3531,6 @@ function loadFilterState(){
     if(state.rocketPct){const el=document.getElementById('fRocketPct');if(el)el.value=state.rocketPct;}
     if(state.fMax1D){const el=document.getElementById('fMax1D');if(el)el.value=state.fMax1D;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
-    if(state.slAtrMult!=null){const el=document.getElementById('fSlAtrMult');if(el)el.value=state.slAtrMult;}
-    if(state.tgtAtrMult!=null){const el=document.getElementById('fTgtAtrMult');if(el)el.value=state.tgtAtrMult;}
     if(state.fmaxalloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.fmaxalloc;}
     if(state.fMinScore){const el=document.getElementById('fMinScore');if(el)el.value=state.fMinScore;}
     if(state.sortCol)SCOL=state.sortCol;
@@ -3659,11 +3634,6 @@ function loadFilterState(){
     const pRaw=localStorage.getItem(POSITIONS_STORE);
     if(pRaw){ const parsed=JSON.parse(pRaw); if(Array.isArray(parsed)) POSITIONS=parsed; }
   }catch(e){ console.error('INIT positions restore failed:',e); }
-  try{
-    const aRaw=localStorage.getItem(ATR1W_STORE);
-    if(aRaw){ const parsed=JSON.parse(aRaw); if(parsed&&typeof parsed==='object') ATR1W_MAP=parsed; }
-  }catch(e){ console.error('INIT atr1w restore failed:',e); }
-
   // Step 3: Render stats
   try{
     if(ALL.length) renderStats();
