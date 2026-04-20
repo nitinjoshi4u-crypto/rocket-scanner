@@ -1201,7 +1201,7 @@ function computeBookedToday(){
 function renderStats(){
   const t=ALL.length;
   const _minScore=parseFloat(document.getElementById('fMinScore')?.value??'70')||70;
-  const sc=ALL.filter(s=>s.rocketScore>=_minScore).length;
+  const sc=FILT.length;
   const bull=ALL.filter(s=>(s.priceChange||0)>0).length;
   const totalParsed=ENGINE_DATA?.totalParsed||t;
   const top=ALL[0];
@@ -1975,21 +1975,21 @@ function getCols(){
   }
   const dynamic=[];
   for(const f of allFeats){
-    if(dynamic.length>=10) break;
+    if(dynamic.length>=9) break;
     if(fixedFeatKeys.has(f)) continue;
-    // Check if at least one stock has a non-null value for this feature
+    // Skip only if ALL stocks have null for this feature
     const hasData=pool.some(s=>s._features&&s._features[f]!=null);
     if(!hasData) continue;
     dynamic.push({key:'_feat_'+f,featKey:f,label:labels[f]||f,s:1,isDynamic:true});
   }
-  // If we didn't get 10 from top10, try further features
-  if(dynamic.length<10&&ENGINE_DATA?.features){
+  // If we didn't get 9 from top10, fill from remaining features
+  if(dynamic.length<9&&ENGINE_DATA?.features){
     const weights=ENGINE_DATA.weights||{};
     const remaining=[...ENGINE_DATA.features]
       .filter(f=>!allFeats.includes(f)&&!fixedFeatKeys.has(f))
       .sort((a,b)=>(weights[b]||0)-(weights[a]||0));
     for(const f of remaining){
-      if(dynamic.length>=10) break;
+      if(dynamic.length>=9) break;
       const hasData=pool.some(s=>s._features&&s._features[f]!=null);
       if(!hasData) continue;
       dynamic.push({key:'_feat_'+f,featKey:f,label:labels[f]||f,s:1,isDynamic:true});
@@ -2383,7 +2383,7 @@ function applyFilters(){
   // post-filter convenience for tweaking the export — not persisted state.
   SELECTED=new Set(FILT.map(s=>s.symbol));
 
-  PG=1;renderHead();renderTable();renderStatusBar();saveFilterState();updateTabCounts();
+  PG=1;renderHead();renderTable();renderStatusBar();saveFilterState();updateTabCounts();if(ALL.length)renderStats();
 }
 
 
