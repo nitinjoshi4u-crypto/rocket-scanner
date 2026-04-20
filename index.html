@@ -1958,10 +1958,11 @@ function updateQualityPanel(){
 // Fixed columns + dynamic top 10 mRMR features (skip empty ones)
 function getCols(){
   const fixed=[
-    {key:'chk',label:'',s:0},{key:'rank',label:'#',s:0},
+    {key:'chk',label:'',s:0},
     {key:'rocketScore',label:'Score',s:1},{key:'symbol',label:'Symbol',s:1},
     {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'delivPct',label:'Deliv%',s:1},
     {key:'alloc',label:'Alloc ₹',s:0},{key:'volume',label:'Volume',s:1},
+    {key:'_sl',label:'SL%',s:1},{key:'_tgt',label:'TGT%',s:1},
   ];
   // Dynamic columns from mRMR features — skip any that are all null across displayed stocks
   const allFeats=ENGINE_DATA?.top10Feats||[];
@@ -2219,10 +2220,18 @@ function renderTable(){
     const isSelected=SELECTED.has(s.symbol);
     const am=allocMap[s.symbol];
 
+    // Compute ATR-adjusted SL/TGT for display
+    const _slAtrMult=parseFloat(document.getElementById('fSlAtrMult')?.value)||1.25;
+    const _tgtAtrMult=parseFloat(document.getElementById('fTgtAtrMult')?.value)||0.5;
+    const _adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
+    const _adaptiveTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+    const _atr1w=s.atr1w>0?s.atr1w:null;
+    const _sl=_atr1w!=null?Math.max(_adaptiveSL,_slAtrMult*_atr1w):_adaptiveSL;
+    const _tgt=_atr1w!=null?Math.max(_adaptiveTGT,_tgtAtrMult*_atr1w):_adaptiveTGT;
+
     // Fixed cells
     let cells=`
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
-      <td class="rk" style="color:var(--t3)">${rk}</td>
       <td><span class="sc-m" style="color:${col}">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
       <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}</div></td>
       <td>₹${fmt(s.price)}</td>
@@ -2232,7 +2241,9 @@ function renderTable(){
         if(!am) return '<span style="color:var(--t3);font-size:11px">—</span>';
         return `<span style="color:var(--amber);font-weight:700;font-family:'DM Mono',monospace;font-size:12px">₹${am.alloc.toLocaleString('en-IN')}</span><div style="font-size:9px;color:var(--t3);margin-top:1px">${am.qty} shares</div>`;
       })()}</td>
-      <td>${fV(s.volume)}</td>`;
+      <td>${fV(s.volume)}</td>
+      <td style="color:var(--red);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_sl.toFixed(1)}%</td>
+      <td style="color:var(--green);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_tgt.toFixed(1)}%</td>`;
 
     // Dynamic mRMR feature cells — from COLS (already filtered for non-empty)
     for(const c of COLS){
@@ -2278,6 +2289,13 @@ function applySort(){
       const fk=col.substring(6);
       va=a._features?a._features[fk]:null;
       vb=b._features?b._features[fk]:null;
+    } else if(col==='_sl'||col==='_tgt'){
+      const slM=parseFloat(document.getElementById('fSlAtrMult')?.value)||1.25;
+      const tgM=parseFloat(document.getElementById('fTgtAtrMult')?.value)||0.5;
+      const aSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
+      const aTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+      const getV=(s)=>{const aw=s.atr1w>0?s.atr1w:null;return col==='_sl'?(aw!=null?Math.max(aSL,slM*aw):aSL):(aw!=null?Math.max(aTGT,tgM*aw):aTGT);};
+      va=getV(a);vb=getV(b);
     } else {
       va=a[col];vb=b[col];
     }
