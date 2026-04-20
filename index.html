@@ -3138,16 +3138,15 @@ function showGttPopup(){
   // Collect rows: settled holdings + open long positions (T+1 unsettled)
   const rowMap={};
   (HOLDINGS||[]).forEach(h=>{
-    if(h.qty>0) rowMap[h.symbol]={symbol:h.symbol,qty:h.qty,avgCost:h.avgCost??0,posLtp:null,src:'H'};
+    if(h.qty>0) rowMap[h.symbol]={symbol:h.symbol,qty:h.qty,avgCost:h.avgCost??0,holdLtp:h.ltp??null,posLtp:null,src:'H'};
   });
   (POSITIONS||[]).forEach(p=>{
     if(p.qty>0){
       if(rowMap[p.symbol]){
-        // enrich existing holding row with positions avg/ltp if missing
         if(!rowMap[p.symbol].avgCost && p.avgCost) rowMap[p.symbol].avgCost=p.avgCost;
         rowMap[p.symbol].posLtp=p.ltp??null;
       } else {
-        rowMap[p.symbol]={symbol:p.symbol,qty:p.qty,avgCost:p.avgCost??0,posLtp:p.ltp??null,src:'P'};
+        rowMap[p.symbol]={symbol:p.symbol,qty:p.qty,avgCost:p.avgCost??0,holdLtp:null,posLtp:p.ltp??null,src:'P'};
       }
     }
   });
@@ -3161,9 +3160,9 @@ function showGttPopup(){
   const enriched=rows.map(r=>{
     const sellData=getSellAvgPrice(r.symbol);
     const avgBuy=sellData?.avg ?? r.avgCost ?? 0;
-    // LTP priority: ALL scanner > positions CSV > holdings LTP
+    // LTP priority: ALL scanner > positions CSV > holdings CSV
     const allStock=ALL.find(s=>s.symbol===r.symbol);
-    const ltp=allStock?.ltp ?? r.posLtp ?? null;
+    const ltp=allStock?.ltp ?? r.posLtp ?? r.holdLtp ?? null;
     const {sl:slPct,tgt:tgtPct}=calcAtrSLTGT({atr1w:atr1wMap[r.symbol]??0});
     const tgtPrice=avgBuy>0?parseFloat(tick(avgBuy*(1+tgtPct/100)).toFixed(2)):null;
     const slPrice=avgBuy>0?parseFloat(tick(avgBuy*(1-slPct/100)).toFixed(2)):null;
