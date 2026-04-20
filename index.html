@@ -1208,9 +1208,9 @@ function renderStats(){
 
   // Score spread: shows if engine is differentiating
   const scores=ALL.map(s=>s.rocketScore).filter(v=>isFinite(v));
-  const scoreMax=scores.length?Math.max(...scores).toFixed(1):'—';
-  const scoreMin=scores.length?Math.min(...scores).toFixed(1):'—';
-  const scoreSpread=scores.length?(Math.max(...scores)-Math.min(...scores)).toFixed(1):'—';
+  const scoreMax=scores.length?Math.max(...scores).toFixed(2):'—';
+  const scoreMin=scores.length?Math.min(...scores).toFixed(2):'—';
+  const scoreSpread=scores.length?(Math.max(...scores)-Math.min(...scores)).toFixed(2):'—';
 
   // Rockets today: stocks that moved ≥ threshold — the engine's training signal.
   // This is the engine's rocket count, not the current table page size.
@@ -1347,7 +1347,7 @@ function computePerfStats(trips){
   const wins=trips.filter(r=>r.netPnl>0), losses=trips.filter(r=>r.netPnl<=0);
   const winPcts=wins.map(r=>r.netPnlPct).sort((a,b)=>a-b);
   const lossPcts=losses.map(r=>r.netPnlPct).sort((a,b)=>a-b);
-  const winRate=trips.length?+(wins.length/trips.length*100).toFixed(1):0;
+  const winRate=trips.length?+(wins.length/trips.length*100).toFixed(2):0;
   const avgWinPct=+meanArr(winPcts).toFixed(2);
   const avgLossPct=+meanArr(lossPcts).toFixed(2);
   const riskReward=avgLossPct?+Math.abs(avgWinPct/avgLossPct).toFixed(2):0;
@@ -1506,26 +1506,26 @@ function renderPerformance(){
 
   // ── Stocks table — last 30 days ──
   // Edge = (Win% × Avg%) × min(1, lots/5) — confidence-penalised combined metric
-  const symRows=(p.symBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(1)}));
+  const symRows=(p.symBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}));
   const symCols=[
     {key:'sym',label:'Symbol',align:'left',fmt:v=>v,clrFn:()=>'var(--t1)',bold:true},
     {key:'netPnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
     {key:'trades',label:'Lots',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
     {key:'winRate',label:'Win%',align:'right',fmt:v=>v+'%',clrFn:v=>v>=60?'var(--green)':v>=40?'var(--amber)':'var(--red)'},
     {key:'avgPct',label:'Avg%',align:'right',fmt:fmtPct,clrFn:clr},
-    {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(1),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
+    {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(2),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
   ];
   const symTbl=makeSortableTable('perf-sym',symCols,symRows,'edge',-1);
 
   // ── Hour table — last 30 days ──
   // Edge = (Win% × Avg%) × min(1, lots/5)
-  const hourRows=(p.hourBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(1)}));
+  const hourRows=(p.hourBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}));
   const hourCols=[
     {key:'hour',label:'Buy Time',align:'left',fmt:v=>{const hh=Math.floor(v/60),mm=v%60,h12=hh===0?12:hh>12?hh-12:hh,mer=hh<12?'AM':'PM';return h12+':'+(mm===0?'00':mm)+' '+mer;},clrFn:()=>'var(--t1)'},
     {key:'trades',label:'Lots',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
     {key:'winRate',label:'Win%',align:'right',fmt:v=>v+'%',clrFn:v=>v>=60?'var(--green)':v>=40?'var(--amber)':'var(--red)'},
     {key:'avgPct',label:'Avg%',align:'right',fmt:fmtPct,clrFn:clr},
-    {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(1),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
+    {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(2),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
   ];
   const hourTbl=makeSortableTable('perf-hour',hourCols,hourRows,'edge',-1);
 
@@ -1687,7 +1687,7 @@ function renderMethodology(){
     const todayR=E.targetCorrToday?.[f];
     const todayCell=todayR!=null&&!isNaN(todayR)?`<span style="color:${todayR>=0?'var(--green)':'var(--red)'};font-size:10px">${(todayR??0).toFixed(3)}</span>`:'—';
     const _n=v=>isFinite(v)?v:0;
-    const tcS=tc!=null&&isFinite(tc)?tc.toFixed(3):'—'; const redS=m&&m.red!=null&&isFinite(m.red)?m.red.toFixed(3):'—'; const scS=m&&m.score!=null&&isFinite(m.score)?m.score.toFixed(4):'—'; const wS=w!=null&&isFinite(w)?(w*100).toFixed(1):'—';
+    const tcS=tc!=null&&isFinite(tc)?tc.toFixed(3):'—'; const redS=m&&m.red!=null&&isFinite(m.red)?m.red.toFixed(3):'—'; const scS=m&&m.score!=null&&isFinite(m.score)?m.score.toFixed(4):'—'; const wS=w!=null&&isFinite(w)?(w*100).toFixed(2):'—';
     wtHTML+=`<tr>
       <td style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;color:var(--t1)">${E.labels[f]||f}</td><td>${src}</td><td style="color:${(tc||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${tcS}</td><td>${todayCell}</td><td>${dir}</td><td>${redS}</td><td style="font-weight:700">${scS}</td><td class="bar-cell"><span class="cb" style="width:${bw}%;background:${bc};opacity:.5"></span></td><td style="font-weight:800">${wS}%</td>
     </tr>`;
@@ -1867,10 +1867,10 @@ function renderMethodology(){
       for(const r of prioritized){
         const todayStr=r.todayChg!=null?((r.todayChg>=0?'+':'')+r.todayChg.toFixed(2)+'%'):'—';
         const todayC=r.todayChg!=null?(r.todayChg>=0?'var(--green)':'var(--red)'):'var(--t3)';
-        const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(1)+'%':'—';
+        const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(2)+'%':'—';
         const peakC=r.peakRetention!=null?(r.peakRetention>=50?'var(--green)':'var(--red)'):'var(--t3)';
         const s=scoreMap[r.symbol];
-        const scoreStr=s?s.score.toFixed(1):'—';
+        const scoreStr=s?s.score.toFixed(2):'—';
         const scoreC=s?'var(--fire)':'var(--t3)';
         const rankStr=s?'#'+s.rank:'—';
         // Actionable verdict
@@ -1935,10 +1935,10 @@ function updateQualityPanel(){
   for(const r of prioritized){
     const todayStr=r.todayChg!=null?((r.todayChg>=0?'+':'')+r.todayChg.toFixed(2)+'%'):'—';
     const todayC=r.todayChg!=null?(r.todayChg>=0?'var(--green)':'var(--red)'):'var(--t3)';
-    const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(1)+'%':'—';
+    const peakStr=r.peakRetention!=null?r.peakRetention.toFixed(2)+'%':'—';
     const peakC=r.peakRetention!=null?(r.peakRetention>=50?'var(--green)':'var(--red)'):'var(--t3)';
     const s=scoreMap[r.symbol];
-    const scoreStr=s?s.score.toFixed(1):'—';
+    const scoreStr=s?s.score.toFixed(2):'—';
     const scoreC=s?(s.score>=78?'var(--fire)':s.score>=64?'var(--green)':'var(--t3)'):'var(--t3)';
     const rankStr=s?'#'+s.rank:'—';
     let action,actionC;
@@ -2192,18 +2192,18 @@ function renderHead(){
 }
 
 function fmt(v,d=2){return v===null||v===undefined||isNaN(v)?'—':Number(v).toFixed(d);}
-function fV(v){if(v===null||isNaN(v))return'—';if(v>=1e7)return(v/1e7).toFixed(1)+'Cr';if(v>=1e5)return(v/1e5).toFixed(1)+'L';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toLocaleString();}
-function fSh(v){if(v===null||isNaN(v))return'—';if(v>=1e5)return(v/1e5).toFixed(1)+'L';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return Math.round(v).toLocaleString();}
+function fV(v){if(v===null||isNaN(v))return'—';if(v>=1e7)return(v/1e7).toFixed(2)+'Cr';if(v>=1e5)return(v/1e5).toFixed(2)+'L';if(v>=1e3)return(v/1e3).toFixed(2)+'K';return v.toLocaleString();}
+function fSh(v){if(v===null||isNaN(v))return'—';if(v>=1e5)return(v/1e5).toFixed(2)+'L';if(v>=1e3)return(v/1e3).toFixed(2)+'K';return Math.round(v).toLocaleString();}
 function scC(s){return'var(--fire)';}
 function fDel(v){
   if(v===null||v===undefined||isNaN(v))return'—';
   const c=v>=60?'var(--green)':v>=40?'var(--cyan)':v>=25?'var(--orange)':'var(--red)';
-  return`<span style="color:${c};font-weight:600">${v.toFixed(1)}%</span>`;
+  return`<span style="color:${c};font-weight:600">${v.toFixed(2)}%</span>`;
 }
 function fPerf(v){
   if(v===null||v===undefined||isNaN(v))return'—';
   const c=v>0?'var(--green)':v<0?'var(--red)':'var(--t3)';
-  return`<span style="color:${c};font-weight:600">${v>0?'+':''}${v.toFixed(1)}%</span>`;
+  return`<span style="color:${c};font-weight:600">${v>0?'+':''}${v.toFixed(2)}%</span>`;
 }
 
 function renderTable(){
@@ -2224,7 +2224,7 @@ function renderTable(){
     // Fixed cells
     let cells=`
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
-      <td><span class="sc-m" style="color:${col}">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
+      <td><span class="sc-m" style="color:${col}">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(2)}</span></td>
       <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
@@ -2234,8 +2234,8 @@ function renderTable(){
         return `<span style="color:var(--amber);font-weight:700;font-family:'DM Mono',monospace;font-size:12px">₹${am.alloc.toLocaleString('en-IN')}</span><div style="font-size:9px;color:var(--t3);margin-top:1px">${am.qty} shares</div>`;
       })()}</td>
       <td>${fV(s.volume)}</td>
-      <td style="color:var(--red);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_sl.toFixed(1)}%</td>
-      <td style="color:var(--green);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_tgt.toFixed(1)}%</td>`;
+      <td style="color:var(--red);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_sl.toFixed(2)}%</td>
+      <td style="color:var(--green);font-weight:600;font-size:11px;font-family:'DM Mono',monospace">${_tgt.toFixed(2)}%</td>`;
 
     // Dynamic mRMR feature cells — from COLS (already filtered for non-empty)
     for(const c of COLS){
@@ -2397,7 +2397,7 @@ function renderStatusBar(){
   const fMax1D=_fMax1Dv2!==''?parseFloat(_fMax1Dv2):Infinity;
   if(fscore>0)tags.push('F≥'+fscore);
   if(fMax1D<Infinity)tags.push('1D≤'+fMax1D+'%');
-  if(fvol2>0){const n=fvol2;tags.push('Vol≥'+(n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n));}
+  if(fvol2>0){const n=fvol2;tags.push('Vol≥'+(n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n));}
   if(fsh>0){const n=fsh;tags.push('Holders≥'+(n>=1e5?(n/1e5)+'L':n>=1e3?(n/1e3)+'K':n));}
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
   const isFiltered=tags.length>0||shown<total;
@@ -2424,7 +2424,7 @@ function renderStatusBar(){
       const tgtSrc=TRADEBOOK_STATS&&TRADEBOOK_STATS.adaptiveTGT?'tradebook':'ATR fallback';
       const tip=`Sum of (qty × buy × ${tgtPct.toFixed(2)}% − Zerodha round-trip charges) across selected stocks. Source: ${tgtSrc}.`;
       const color=totalNet>=0?'var(--green)':'var(--red)';
-      html+=` <span style="color:${color};font-size:11px;font-family:'DM Mono',monospace;font-weight:700;margin-left:8px" title="${tip}">· 🎯 ₹${Math.round(totalNet).toLocaleString('en-IN')} net @ ${tgtPct.toFixed(1)}%</span>`;
+      html+=` <span style="color:${color};font-size:11px;font-family:'DM Mono',monospace;font-weight:700;margin-left:8px" title="${tip}">· 🎯 ₹${Math.round(totalNet).toLocaleString('en-IN')} net @ ${tgtPct.toFixed(2)}%</span>`;
     }
   } else if(capital>0){
     html+=` <span style="color:var(--t3);font-size:11px;margin-left:8px">· select stocks to allocate ₹${capital.toLocaleString('en-IN')}</span>`;
@@ -3003,11 +3003,11 @@ function parseTradebook(text){
 
   const stats={
     roundTrips:roundTrips.length, winners:wins.length, losers:losses.length,
-    winRate:+winRate.toFixed(1),
+    winRate:+winRate.toFixed(2),
     avgWinPct:+avgWinPct.toFixed(2), avgLossPct:+avgLossPct.toFixed(2),
     medianWinPct:+medianWinPct.toFixed(2), medianLossPct:+medianLossPct.toFixed(2),
     p75Win:+p75Win.toFixed(2), p25Loss:+p25Loss.toFixed(2),
-    avgHoldDays:+avgHoldDays.toFixed(1), avgCapital:+Math.round(avgCapital),
+    avgHoldDays:+avgHoldDays.toFixed(2), avgCapital:+Math.round(avgCapital),
     adaptiveSL, adaptiveTGT, minExitPct,
     riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
     lastBooked,
@@ -3105,7 +3105,7 @@ function exportBasket(){
         quantity:qty,price:parseFloat(ltp.toFixed(2)),
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
-        gtt:{target:parseFloat(tgt.toFixed(2)),stoploss:parseFloat((-sl).toFixed(2))},
+        gtt:{target:parseFloat(tgt.toFixed(2))},
         tags:[]
       }
     });
@@ -3171,9 +3171,9 @@ function showGttPopup(){
       <td>${r.qty}</td>
       <td>${fmtp(avgBuy)}</td>
       <td style="color:var(--t2)">${ltp!=null&&ltp>0?fmtp(ltp):'—'}</td>
-      <td style="color:${pnlColor}">${pnlPct!=null?(pnlPct>=0?'+':'')+pnlPct.toFixed(1)+'%':'—'}</td>
-      <td style="color:var(--red);font-weight:700">${slPrice!=null?fmtp(slPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(-${slPct.toFixed(1)}%)</span></td>
-      <td style="color:var(--green);font-weight:700">${tgtPrice!=null?fmtp(tgtPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(+${tgtPct.toFixed(1)}%)</span></td>
+      <td style="color:${pnlColor}">${pnlPct!=null?(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%':'—'}</td>
+      <td style="color:var(--red);font-weight:700">${slPrice!=null?fmtp(slPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(-${slPct.toFixed(2)}%)</span></td>
+      <td style="color:var(--green);font-weight:700">${tgtPrice!=null?fmtp(tgtPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(+${tgtPct.toFixed(2)}%)</span></td>
     </tr>`;
   });
 
@@ -3198,7 +3198,7 @@ function showGttPopup(){
         </tr></thead>
         <tbody>${tbodyHtml}</tbody>
       </table>
-      <div style="margin-top:12px;font-size:11px;color:var(--t3)">SL ${_sl.toFixed(1)}% &nbsp;|&nbsp; TGT ${_tgt.toFixed(1)}% &nbsp;|&nbsp; Adaptive from tradebook &nbsp;|&nbsp; Prices tick-rounded to ₹0.05</div>
+      <div style="margin-top:12px;font-size:11px;color:var(--t3)">SL ${_sl.toFixed(2)}% &nbsp;|&nbsp; TGT ${_tgt.toFixed(2)}% &nbsp;|&nbsp; Adaptive from tradebook &nbsp;|&nbsp; Prices tick-rounded to ₹0.05</div>
     </div>`;
   // Close on backdrop click
   overlay.addEventListener('click',e=>{if(e.target===overlay) overlay.remove();});
