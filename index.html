@@ -3150,7 +3150,6 @@ function exportSellBasket(){
     const atr1w=atr1wMap[sym]??null;
     const slPct=atr1w!=null?Math.max(adaptiveSL,slAtrMult*atr1w):adaptiveSL;
     const tgtPct=atr1w!=null?Math.max(adaptiveTGT,tgtAtrMult*atr1w):adaptiveTGT;
-    const slPrice=parseFloat(tick(avgBuy*(1-slPct/100)).toFixed(2));
     const tgtPrice=parseFloat(tick(avgBuy*(1+tgtPct/100)).toFixed(2));
     orders.push({
       id:orderId++,
@@ -3170,10 +3169,7 @@ function exportSellBasket(){
         quantity:qty,price:tgtPrice,
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
-        gtt:{
-          stoploss:{trigger:slPrice,price:slPrice},
-          target:{trigger:tgtPrice,price:tgtPrice}
-        },
+        gtt:{target:parseFloat(tgtPct.toFixed(2)),stoploss:parseFloat((-slPct).toFixed(2))},
         tags:[]
       }
     });
