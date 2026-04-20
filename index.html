@@ -307,6 +307,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="file-slot" id="slot-hold">🛡 Holdings.csv</div>
    <div class="file-slot" id="slot-tb">📒 Tradebook.csv</div>
    <div class="file-slot" id="slot-orders">📋 Orders.csv</div>
+   <div class="file-slot" id="slot-pos">📊 Positions.csv</div>
   </div>
  </div>
  <div class="nse-links-box" id="nseLinkBox">
@@ -391,6 +392,7 @@ const REGIME_CAL_STORE='rs_regime_cal';
 const HOLD_STORE='rs_holdings';
 const TRADEBOOK_STORE='rs_tradebook';
 const ORDERS_STORE='rs_orders';
+const POSITIONS_STORE='rs_positions';
 let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct, winRate, avgHoldDays, p25Loss, p75Win, adaptiveSL, adaptiveTGT, minExitPct, roundTrips}
 
 // ── One-time key migration: move old versioned keys → clean names ──
@@ -431,6 +433,7 @@ let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct
 let NSE_BHAV={},NSE_52W={},NSE_SURV={},NSE_BULK={},NSE_BLOCK={};
 let HOLDINGS=[]; // active holdings from Holdings.csv (qty>0)
 let HOLDINGS_ALL=[]; // all holdings rows from Holdings.csv, including qty=0 closed holdings
+let POSITIONS=[]; // open positions from Positions.csv (T+1 unsettled buys)
 // Regime-conditional accumulators
 let ACC_CORR_BULL=null, ACC_CORR_BEAR=null, ACC_CORR_NEUT=null;
 let CURRENT_REGIME='neutral'; // bull | bear | neutral
@@ -2327,6 +2330,12 @@ function applyFilters(){
         if(h.symbol) heldPos[h.symbol]={qty:h.qty||0,avg:h.avgCost||0};
       });
     }
+    // Overlay Positions (T+1 unsettled — not yet in Holdings)
+    if(POSITIONS&&POSITIONS.length){
+      POSITIONS.forEach(p=>{
+        if(!heldPos[p.symbol]) heldPos[p.symbol]={qty:p.qty,avg:p.avgCost||0};
+      });
+    }
     // Overlay today's orders: new buys add to held; intraday closed = suppress re-entry
     if(ORDERS_TODAY&&ORDERS_TODAY.length){
       const ordersBySymbol={};
@@ -2471,7 +2480,7 @@ function hideUploadScreen(){
 function exportBrain(){
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
+    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE
   ];
   const brain={_exported:new Date().toISOString(), _version:'rscanner_brain_v1'};
   let totalSize=0;
@@ -2511,7 +2520,7 @@ function importBrain(event){
       }
       const BRAIN_KEYS=[
         CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
+        SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE
       ];
       // Also map v4 keys → v5 keys for backward-compatible brain imports
       const V4_MAP={
@@ -2577,12 +2586,13 @@ function resetBrain(btn){
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
     SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE,
-    HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE
+    HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE
   ];
   BRAIN_KEYS.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
   ACC_CORR=null; ACC_CORR_BULL=null; ACC_CORR_BEAR=null; ACC_CORR_NEUT=null;
   ALL=[]; FILT=[]; ENGINE_DATA={};
   HOLDINGS=[];
+  POSITIONS=[];
   PREV_SNAP={};
   HOLD_COST_MAP={};
   btn._stage=0;
@@ -2651,6 +2661,26 @@ function parseOrders(text){
     orders.push({symbol:sym,type,qty:Math.abs(qty),price,time});
   });
   return orders.length?orders:null;
+}
+
+// ── Positions Parser ──
+// Parses Zerodha Positions.csv for open T+1/intraday positions (not yet in Holdings).
+function parsePositions(text){
+  const rows=parseCSV(text);
+  if(!rows.length) return [];
+  const hdrs=Object.keys(rows[0]);
+  const find=(pats)=>hdrs.find(h=>pats.some(p=>p.test(h.trim())))||null;
+  const symCol=find([/^instrument$/i,/^symbol$/i,/^tradingsymbol$/i]);
+  const qtyCol=find([/^qty\.?$/i,/^quantity$/i,/^net.*qty$/i,/^buy.*qty$/i]);
+  const avgCol=find([/^avg\.?\s*price$/i,/^average.*price$/i,/^buy.*avg$/i,/^avg.*buy/i]);
+  if(!symCol||!qtyCol){console.warn('Positions CSV: missing columns');return [];}
+  return rows.map(r=>{
+    const sym=normSym(r[symCol]);
+    const qty=num(r[qtyCol]);
+    const avg=avgCol?num(r[avgCol]):null;
+    if(!sym||!qty||qty<=0) return null;
+    return{symbol:sym,qty,avgCost:avg};
+  }).filter(Boolean);
 }
 
 // Compute same-day P&L from orders — FIFO match buy→sell per symbol.
@@ -3198,7 +3228,7 @@ function setMsg(m){document.getElementById('ldMsg').textContent=m;}
 
 async function processFiles(files){
   NSE_BHAV={};NSE_52W={};NSE_SURV={};NSE_BULK={};NSE_BLOCK={};NSE_LOADED=false;SELECTED=new Set();
-  let tvFile=null,nseZip=null,holdFile=null,tbFile=null,ordersFile=null;
+  let tvFile=null,nseZip=null,holdFile=null,tbFile=null,ordersFile=null,posFile=null;
   for(const f of files){
     if(f.name.toLowerCase().endsWith('.zip')||f.name.toLowerCase().includes('.zip')){nseZip=nseZip||f;continue;}
     if(!f.name.toLowerCase().endsWith('.csv'))continue;
@@ -3206,6 +3236,7 @@ async function processFiles(files){
     if(fname_l.includes('holding')){holdFile=f;continue;}
     if(fname_l.includes('tradebook')){tbFile=f;continue;}
     if(fname_l.includes('order')){ordersFile=f;continue;}
+    if(fname_l.includes('position')){posFile=f;continue;}
     if(fname_l.includes('all nse')){tvFile=f;continue;}
     if(!tvFile) tvFile=f; // fallback
   }
@@ -3248,6 +3279,7 @@ async function processFiles(files){
             if(fn.includes('holding')&&!holdFile){holdFile={name:fn,text:async()=>text};continue;}
             if(fn.includes('tradebook')&&!tbFile){tbFile={name:fn,text:async()=>text};continue;}
             if(fn.includes('order')&&!ordersFile){ordersFile={name:fn,text:async()=>text};continue;}
+            if(fn.includes('position')&&!posFile){posFile={name:fn,text:async()=>text};continue;}
             if(!tvFile) tvFile={name:fn,text:async()=>text};
           }
         }
@@ -3367,6 +3399,15 @@ async function processFiles(files){
       ORDERS_TODAY=parseOrders(ordersText);
       if(ORDERS_TODAY) try{localStorage.setItem(ORDERS_STORE,JSON.stringify(ORDERS_TODAY));}catch(e){}
       if(ORDERS_TODAY) renderStats();
+    }
+    if(posFile){
+      setMsg('Processing positions...');
+      document.getElementById('slot-pos').textContent='📊 '+posFile.name;
+      document.getElementById('slot-pos').classList.add('ok');
+      const posText=await posFile.text();
+      POSITIONS=parsePositions(posText);
+      if(POSITIONS.length) try{localStorage.setItem(POSITIONS_STORE,JSON.stringify(POSITIONS));}catch(e){}
+      applyFilters();
     }
     showBrainPrompt();
     } // end isFullScannerCSV else
@@ -3570,6 +3611,10 @@ function loadFilterState(){
       }
     }
   }catch(e){ console.error('INIT step2g orders restore failed:',e); }
+  try{
+    const pRaw=localStorage.getItem(POSITIONS_STORE);
+    if(pRaw){ const parsed=JSON.parse(pRaw); if(Array.isArray(parsed)) POSITIONS=parsed; }
+  }catch(e){ console.error('INIT positions restore failed:',e); }
 
   // Step 3: Render stats
   try{
