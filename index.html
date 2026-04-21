@@ -1237,30 +1237,31 @@ function renderStats(){
     }
   });
 
-  const bookedToday=computeBookedToday();
+  // Only show Booked Today if orders are from today's session date
+  const sessionDate=getSessionDate();
+  const ordersDate=ORDERS_TODAY&&ORDERS_TODAY.length?(ORDERS_TODAY[0].time||'').substring(0,10):'';
+  const ordersAreToday=ordersDate===sessionDate;
+  const bookedToday=ordersAreToday?computeBookedToday():null;
   let bookedCard='';
   if(bookedToday&&bookedToday.count>0){
-    const bookedLabel='Booked Today';
-    const bookedDateText=bookedToday.date?` · ${bookedToday.date}`:'';
     const bookedMeta=bookedToday.missingCost?` · ${bookedToday.missingCost} unmatched`:'';
     bookedCard=`
-      <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${bookedToday.total>=0?'var(--green)':'var(--red)'}">${bookedToday.total>=0?'+':'−'}₹${Math.round(Math.abs(bookedToday.total)).toLocaleString('en-IN')}</div><div class="st-d">${bookedToday.count} trade${bookedToday.count===1?'':'s'} · net of charges${bookedMeta}${bookedDateText}</div></div>`;
+      <div class="st"><div class="st-l">Booked Today</div><div class="st-v" style="color:${bookedToday.total>=0?'var(--green)':'var(--red)'}">${bookedToday.total>=0?'+':'−'}₹${Math.round(Math.abs(bookedToday.total)).toLocaleString('en-IN')}</div><div class="st-d">${bookedToday.count} trade${bookedToday.count===1?'':'s'} · net of charges${bookedMeta} · ${sessionDate}</div></div>`;
   } else if(bookedToday&&bookedToday.sellCount>0){
     bookedCard=`
       <div class="st"><div class="st-l">Booked Today</div><div class="st-v" style="color:var(--t2)">N/A</div><div class="st-d">${bookedToday.sellCount} sell leg${bookedToday.sellCount===1?'':'s'} found · missing holding cost</div></div>`;
   } else {
     const bookedFallback=TRADEBOOK_STATS?.lastBooked||null;
     if(bookedFallback){
-      const bookedLabel='Booked';
       const bookedDateText=bookedFallback.date?` · ${bookedFallback.date}`:'';
       bookedCard=`
-        <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${bookedFallback.total>=0?'var(--green)':'var(--red)'}">${bookedFallback.total>=0?'+':'−'}₹${Math.round(Math.abs(bookedFallback.total)).toLocaleString('en-IN')}</div><div class="st-d">${bookedFallback.count} sold · net of charges${bookedDateText}</div></div>`;
+        <div class="st"><div class="st-l">Last Booked</div><div class="st-v" style="color:${bookedFallback.total>=0?'var(--green)':'var(--red)'}">${bookedFallback.total>=0?'+':'−'}₹${Math.round(Math.abs(bookedFallback.total)).toLocaleString('en-IN')}</div><div class="st-d">${bookedFallback.count} sold · net of charges${bookedDateText}</div></div>`;
     }
   }
 
   document.getElementById('statsBar').innerHTML=`
     <div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span></div></div>
-    <div class="st"><div class="st-l">Score ≥${_minScore}</div><div class="st-v" style="color:var(--fire)">${sc}</div><div class="st-d"><span style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount} ≥${ENGINE_DATA?.rocketThreshold||10}% today</span>${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''}${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
+    <div class="st"><div class="st-l">Filtered <span style="color:var(--t3);font-weight:400">≥${_minScore}</span></div><div class="st-v" style="color:var(--fire)">${sc}</div><div class="st-d">${top?`<span style="color:var(--amber);font-weight:700">#1 ${top.symbol}</span> · ${top.rocketScore.toFixed(2)} score`:'no picks'}${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''}${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
     <div class="st"><div class="st-l">Top Sector</div><div class="st-v" style="font-size:15px;color:var(--green)">${topSec}</div><div class="st-d">${topSecPct.toFixed(0)}% advancing</div></div>
     ${TRADEBOOK_STATS?`<div class="st"><div class="st-l">Trading Stats</div><div class="st-v" style="font-size:13px;color:var(--amber)">SL ${TRADEBOOK_STATS.adaptiveSL}% · TGT ${TRADEBOOK_STATS.adaptiveTGT}%</div><div class="st-d">Hold ${TRADEBOOK_STATS.avgHoldDays}d · Size ₹${TRADEBOOK_STATS.avgCapital.toLocaleString('en-IN')} · Daily ${(TRADEBOOK_STATS.avgDailyPnl>=0?'+':'')}₹${Math.abs(TRADEBOOK_STATS.avgDailyPnl).toLocaleString('en-IN')}</div></div>`:''}
@@ -1447,7 +1448,7 @@ function renderPerformance(){
 
   // ── Tag all trips with regime from calendar (by buyDate) ──
   const allTripsRaw=tb.tripsData||[];
-  const allTrips=allTripsRaw.map(r=>({...r, regime: regCal[r.buyDate]||'?'}));
+  const allTrips=allTripsRaw.map(r=>({...r, regime: regCal[r.sellDate]||regCal[r.buyDate]||'?'}));
 
   // ── Regime filter ──
   const filteredByRegime=PERF_REGIME_FILTER==='all'?allTrips:allTrips.filter(r=>r.regime===PERF_REGIME_FILTER);
