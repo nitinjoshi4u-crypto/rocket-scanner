@@ -1281,7 +1281,7 @@ function renderStats(){
       ENGINE_DATA.regimeSessions
         ? (ENGINE_DATA.regimeSessions.bull||0)+'🐂 '+(ENGINE_DATA.regimeSessions.bear||0)+'🐻 '+(ENGINE_DATA.regimeSessions.neutral||0)+'➡'
         : ''
-    } sessions</div></div>${bookedCard}`;
+    } obs</div></div>${bookedCard}`;
 
   const pills=[];
   pills.push(`<span class="info-pill pill-red">⛔ ${REMOVED.uc} upper circuit removed</span>`);
@@ -1667,8 +1667,8 @@ function renderMethodology(){
   const regimeColor = E.regime==='bull'?'var(--green)':E.regime==='bear'?'var(--red)':'var(--orange)';
   const rs = E.regimeSessions||{bull:0,bear:0,neutral:0};
   const regimeTotal = (rs.bull||0)+(rs.bear||0)+(rs.neutral||0);
-  const corrSource = E.useRegimeCorr?'Regime-specific correlations active':'Combined fallback (need ≥2 sessions in regime)';
-  const sessLabel = `${regimeTotal} sessions · ${E.laggedNote||'lagged learning starts next upload'}`;
+  const corrSource = E.useRegimeCorr?'Regime-specific correlations active':'Combined fallback (need ≥2 observations in regime)';
+  const sessLabel = `${regimeTotal} observations · ${E.laggedNote||'lagged learning starts next upload'}`;
 
   const regimeCardHTML=`<div class="regime-bar">
     <div class="regime-badge" style="color:${regimeColor}">${regimeIcon} ${(E.regime||'neutral').toUpperCase()}</div>
@@ -1817,7 +1817,7 @@ function renderMethodology(){
         <td style="font-size:11px;font-weight:600">${label}</td>
         <td>${fmtAR(allAccCorr[f])}</td>
         <td>${fmtAR(bullR)}</td><td>${fmtAR(bearR)}</td><td>${fmtAR(neutR)}</td>
-        <td style="color:var(--t3);font-size:10px">${ACC_CORR.sessions||'?'}</td>
+        <td style="color:var(--t3);font-size:10px">${ACC_CORR.sessions||'?'} obs</td>
       </tr>`;
     }
     archiveHTML+=`</tbody></table>`;
@@ -2519,7 +2519,7 @@ function exportBrain(){
   a.download=`rocket_brain_${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   const s=brain._summary;
-  showToast(`<strong>Brain exported</strong> (${brain._sizeKB} KB) · ${s.sessions} sessions (🐂${s.bullSessions} 🐻${s.bearSessions} ➡${s.neutralSessions}) · ${s.features} features · ${s.stocks} stocks`);
+  showToast(`<strong>Brain exported</strong> (${brain._sizeKB} KB) · ${s.sessions} obs (🐂${s.bullSessions} 🐻${s.bearSessions} ➡${s.neutralSessions}) · ${s.features} features · ${s.stocks} stocks`);
 }
 
 function importBrain(event){
@@ -2550,7 +2550,7 @@ function importBrain(event){
         }
       }
       const s=brain._summary||{};
-      showToast(`<strong>Brain imported</strong> — ${restored} stores · ${s.sessions||0} sessions · Reloading...`, 3000);
+      showToast(`<strong>Brain imported</strong> — ${restored} stores · ${s.sessions||0} obs · Reloading...`, 3000);
       setTimeout(()=>location.reload(),1500);
     }catch(err){
       showToast('Failed to parse brain file: '+err.message, 5000, true);
@@ -2569,7 +2569,7 @@ function showBrainPrompt(){
   toast.className='brain-toast';
   toast.id='brainToast';
   toast.innerHTML=`
-    <div class="brain-toast-msg"><strong>Brain updated</strong> · ${sessions} session${sessions!==1?'s':''} accumulated</div>
+    <div class="brain-toast-msg"><strong>Brain updated</strong> · ${sessions} observation${sessions!==1?'s':''} accumulated</div>
     <button class="brain-toast-btn" onclick="exportBrain();document.getElementById('brainToast')?.remove()">💾 Export Brain</button>
     <button class="brain-toast-x" onclick="this.parentElement.remove()" title="Dismiss">✕</button>`;
   document.body.appendChild(toast);
@@ -3348,13 +3348,10 @@ async function processFiles(files){
     setMsg('Running mRMR engine across '+(raw.length)+' stocks...');
     await new Promise(r=>setTimeout(r,60));
     window._lastRawTV=raw;
-    // Session tag: date + intraday period (3 equal 140-min windows across the 420-min trading day).
-    // Uploading multiple times within the same period → same tag → no double-counting.
-    // Switching from morning → midday → close → new session each time, capturing regime swings.
+    // Observation tag: 5-minute windows — uploads within same 5-min slot don't double-count.
     const {mins:_nowMins}=istNow();
-    const _minsFromOpen=_nowMins-DAY_START_MIN;
-    const _period=_minsFromOpen<0?0:_minsFromOpen>=DAY_LENGTH_MIN?2:Math.floor(_minsFromOpen/(DAY_LENGTH_MIN/3));
-    const sessionTag=getSessionDate()+':'+_period; // e.g. "2026-04-16:0" / ":1" / ":2"
+    const _slot=Math.floor(_nowMins/5);
+    const sessionTag=getSessionDate()+':'+_slot;
     ALL=runEngine(raw, sessionTag);
     ALL.sort((a,b)=>b.rocketScore-a.rocketScore);
     // Save scan results only — engineData is too large (N² interCorr matrix)
