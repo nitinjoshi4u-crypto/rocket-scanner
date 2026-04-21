@@ -394,6 +394,7 @@ const TRADEBOOK_STORE='rs_tradebook';
 const ORDERS_STORE='rs_orders';
 const POSITIONS_STORE='rs_positions';
 const MISSED_OPP_STORE='rs_missed_opp'; // {date → [{sym, missed%}]}
+const OPEN_BUY_DATE_STORE='rs_open_buy_dates'; // {sym → weighted avg buy date}
 let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct, winRate, avgHoldDays, p25Loss, p75Win, adaptiveSL, adaptiveTGT, minExitPct, roundTrips}
 
 // ── One-time key migration: move old versioned keys → clean names ──
@@ -1308,10 +1309,20 @@ function renderStats(){
   const fp=0; // freshness penalty removed
   if(fp>0)pills.push(`<span class="info-pill pill-gray">❄ ${fp} freshness-penalised (near 52W high)</span>`);
   if(!NSE_LOADED)pills.push(`<span class="info-pill pill-gray">ℹ Drop NSE ZIP alongside TV CSV for delivery % &amp; 52W data</span>`);
-  if(TRADEBOOK_STATS&&TRADEBOOK_STATS.missedOppCount>0){
-    const tb=TRADEBOOK_STATS;
-    pills.push(`<span class="info-pill pill-amber" title="Across ${tb.missedOppDates} sell date(s): stocks where day high exceeded sell price. TGT nudged by 25% of avg missed gain (max 2%).">🎯 ${tb.missedOppCount} missed opportunit${tb.missedOppCount===1?'y':'ies'} across ${tb.missedOppDates} day${tb.missedOppDates===1?'':'s'} · avg +${tb.avgMissedGain.toFixed(2)}% left on table · TGT nudged +${tb.missedAdj.toFixed(2)}%</span>`);
-  }
+  try{
+    const moRaw=localStorage.getItem('rs_missed_opp');
+    if(moRaw){
+      const moStore=JSON.parse(moRaw);
+      const moDates=Object.keys(moStore).length;
+      const moAll=Object.values(moStore).flat();
+      const moCount=moAll.length;
+      if(moCount>0){
+        const moAvg=moAll.reduce((s,m)=>s+m.missed,0)/moCount;
+        const moAdj=+Math.min(moAvg*0.25,2).toFixed(2);
+        pills.push(`<span class="info-pill pill-amber" title="Across ${moDates} sell date(s): stocks where day high exceeded sell price. TGT nudged by 25% of avg missed gain (max 2%).">🎯 ${moCount} missed opportunit${moCount===1?'y':'ies'} across ${moDates} day${moDates===1?'':'s'} · avg +${moAvg.toFixed(2)}% left on table · TGT nudged +${moAdj.toFixed(2)}%</span>`);
+      }
+    }
+  }catch(e){}
   const infoBarEl=document.getElementById('infoBar');
   infoBarEl.innerHTML=pills.join('');
   void infoBarEl.offsetHeight; // force layout so browser paints pills immediately
@@ -2504,7 +2515,7 @@ function hideUploadScreen(){
 function exportBrain(){
   const BRAIN_KEYS=[
     CORR_STORE, CORR_BULL_STORE, CORR_BEAR_STORE, CORR_NEUT_STORE,
-    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE, MISSED_OPP_STORE
+    SNAP_KEY, SNAP_PREV_KEY, ALL_STORE, METH_STORE, REGIME_CAL_STORE, SCANNER_STORE, VER_STORE, HOLD_STORE, TRADEBOOK_STORE, ORDERS_STORE, POSITIONS_STORE, MISSED_OPP_STORE, OPEN_BUY_DATE_STORE
   ];
   const brain={_exportedAt:new Date().toISOString(), _exported:new Date().toISOString(), _version:'rscanner_brain_v1'};
   let totalSize=0;
@@ -3492,7 +3503,10 @@ async function processFiles(files){
       document.getElementById('slot-tb').classList.add('ok');
       const tbText=await tbFile.text();
       TRADEBOOK_STATS=parseTradebook(tbText);
-      if(TRADEBOOK_STATS) try{localStorage.setItem(TRADEBOOK_STORE,JSON.stringify(TRADEBOOK_STATS));}catch(e){}
+      if(TRADEBOOK_STATS){
+        try{localStorage.setItem(TRADEBOOK_STORE,JSON.stringify(TRADEBOOK_STATS));}catch(e){}
+        if(TRADEBOOK_STATS.openBuyDateMap) try{localStorage.setItem(OPEN_BUY_DATE_STORE,JSON.stringify(TRADEBOOK_STATS.openBuyDateMap));}catch(e){}
+      }
       if(TRADEBOOK_STATS){renderStats();renderPerformance();}
     }
     if(ordersFile){
@@ -3693,6 +3707,11 @@ function loadFilterState(){
   try{
     const tbRaw=localStorage.getItem(TRADEBOOK_STORE);
     if(tbRaw) TRADEBOOK_STATS=JSON.parse(tbRaw);
+    // Backfill openBuyDateMap if missing from old stored object
+    if(TRADEBOOK_STATS&&!TRADEBOOK_STATS.openBuyDateMap){
+      const obdRaw=localStorage.getItem(OPEN_BUY_DATE_STORE);
+      if(obdRaw) TRADEBOOK_STATS.openBuyDateMap=JSON.parse(obdRaw);
+    }
   }catch(e){ console.error('INIT step2f tradebook failed:',e); }
 
   // Step 2g: Restore today's orders (only if from today)
