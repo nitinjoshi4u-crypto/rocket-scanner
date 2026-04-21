@@ -2859,7 +2859,7 @@ function parseTradebook(text){
   roundTrips.forEach(r=>{ const k=r.sym+'|'+r.buyDate; posMap[k]=(posMap[k]||0)+r.capital; });
   const avgCapital=meanArr(Object.values(posMap));
   const adaptiveSL=+Math.abs(medianLossPct).toFixed(2);
-  const adaptiveTGT=+Math.abs(p75Win).toFixed(2);
+  const adaptiveTGT=+(Math.abs(medianWinPct)+0.1).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
 
   const bookedByDate={};
