@@ -632,7 +632,7 @@ function parseBhavdata(text){
   parseCSV(text).forEach(r=>{
     const sym=normSym(r['SYMBOL']);
     if(!sym||(r['SERIES']||'').trim()!=='EQ')return;
-    NSE_BHAV[sym]={delivPct:num(r['DELIV_PER']),nseVol:num(r['TTL_TRD_QNTY']),close:num(r['CLOSE']||r['CLOSE_PRICE']||r['ClosePrice'])};
+    NSE_BHAV[sym]={delivPct:num(r['DELIV_PER']),nseVol:num(r['TTL_TRD_QNTY']),close:num(r['CLOSE']||r['CLOSE_PRICE']||r['ClosePrice']),high:num(r['HIGH']||r['HIGH_PRICE']||r['HighPrice'])};
   });
 }
 function parse52W(text){
@@ -2803,6 +2803,7 @@ function parseTradebook(text){
 
   // FIFO matching per symbol — only closed round trips
   const roundTrips=[];
+  const openBuyDateMap={}; // sym → earliest unmatched buy date (current holdings)
   Object.entries(bySymbol).forEach(([sym,trades])=>{
     trades.sort((a,b)=>a.time.localeCompare(b.time));
     const buyQueue=[];
@@ -2824,6 +2825,8 @@ function parseTradebook(text){
         }
       }
     }
+    // Remaining unmatched buys = current open holdings
+    if(buyQueue.length>0) openBuyDateMap[sym]=buyQueue[0].date; // earliest unmatched buy
   });
 
   if(!roundTrips.length) return null;
@@ -2865,24 +2868,26 @@ function parseTradebook(text){
   const avgCapital=meanArr(Object.values(posMap));
   const adaptiveSL=+Math.abs(medianLossPct).toFixed(2);
 
-  // Missed opportunity: for each sym, find its most recent sell, compare against bhav close.
-  // If close > sellPrice → missed gain. Average across all such stocks, cap at 2%.
-  // Nudge TGT by 25% of avg missed gain (in addition to the base +0.1% nudge).
-  const lastSellBySymMap={};
-  roundTrips.forEach(r=>{
-    if(!lastSellBySymMap[r.sym]||r.sellDate>lastSellBySymMap[r.sym].sellDate)
-      lastSellBySymMap[r.sym]=r;
-  });
+  // Missed opportunity: for sells on the most recent sell date, compare sell price
+  // against same-day HIGH from bhav copy. If high > sellPrice → stock went higher
+  // after/before we sold. Use high (not close) to capture intraday missed upside.
+  const recentSellDate=dates[0]||null; // dates sorted newest first (same as lastDate)
   const missedGains=[];
-  Object.values(lastSellBySymMap).forEach(r=>{
-    const bhav=NSE_BHAV[r.sym];
-    if(!bhav||bhav.close==null||bhav.close<=r.sellPrice) return;
-    const missed=(bhav.close-r.sellPrice)/r.sellPrice*100;
-    if(missed>0&&missed<30) missedGains.push(missed); // cap outliers (halt stocks etc)
-  });
-  const avgMissedGain=missedGains.length?missedGains.reduce((s,v)=>s+v,0)/missedGains.length:0;
+  if(recentSellDate){
+    roundTrips.forEach(r=>{
+      if(r.sellDate!==recentSellDate) return;
+      const bhav=NSE_BHAV[r.sym];
+      const dayHigh=bhav?.high??bhav?.close??null; // prefer HIGH, fall back to close
+      if(dayHigh==null||dayHigh<=r.sellPrice) return;
+      const missed=(dayHigh-r.sellPrice)/r.sellPrice*100;
+      if(missed>0&&missed<30) missedGains.push({sym:r.sym,missed}); // cap outliers
+    });
+  }
+  const missedGainVals=missedGains.map(m=>m.missed);
+  const avgMissedGain=missedGainVals.length?missedGainVals.reduce((s,v)=>s+v,0)/missedGainVals.length:0;
   const missedAdj=+Math.min(avgMissedGain*0.25,2).toFixed(2); // cap nudge at 2%
   const missedOppCount=missedGains.length;
+  const missedSyms=missedGains.map(m=>m.sym);
 
   const adaptiveTGT=+(Math.abs(medianWinPct)+0.1+missedAdj).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
@@ -3046,7 +3051,7 @@ function parseTradebook(text){
     medianWinPct:+medianWinPct.toFixed(2), medianLossPct:+medianLossPct.toFixed(2),
     p75Win:+p75Win.toFixed(2), p25Loss:+p25Loss.toFixed(2),
     avgHoldDays:+avgHoldDays.toFixed(2), avgCapital:+Math.round(avgCapital),
-    adaptiveSL, adaptiveTGT, minExitPct, missedOppCount, avgMissedGain:+avgMissedGain.toFixed(2), missedAdj,
+    adaptiveSL, adaptiveTGT, minExitPct, missedOppCount, avgMissedGain:+avgMissedGain.toFixed(2), missedAdj, missedSyms, recentSellDate, openBuyDateMap,
     riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
     lastBooked,
     bestHour, bestHourAvgPct:bestHour!==null?+bestHourAvgPct.toFixed(2):null,
@@ -3178,14 +3183,11 @@ function showGttPopup(){
   const rows=Object.values(rowMap);
   if(!rows.length){showToast('No holdings or open positions.',3000,true);return;}
 
-  // Build last buy date per symbol from tradebook trips
-  const lastBuyDateMap={};
-  (TRADEBOOK_STATS?.tripsData||[]).forEach(r=>{
-    if(!lastBuyDateMap[r.sym]||r.buyDate>lastBuyDateMap[r.sym]) lastBuyDateMap[r.sym]=r.buyDate;
-  });
-  // Also check today's orders for stocks bought today
+  // Build buy date per symbol: use openBuyDateMap (unmatched FIFO buys = actual current holdings)
+  // Fall back to today's orders for same-day buys not yet in tradebook
+  const lastBuyDateMap={...(TRADEBOOK_STATS?.openBuyDateMap||{})};
   (ORDERS_TODAY||[]).forEach(o=>{
-    if(o.type==='BUY'){const d=(o.time||'').substring(0,10);if(d&&(!lastBuyDateMap[o.symbol]||d>lastBuyDateMap[o.symbol]))lastBuyDateMap[o.symbol]=d;}
+    if(o.type==='BUY'){const d=(o.time||'').substring(0,10);if(d&&!lastBuyDateMap[o.symbol])lastBuyDateMap[o.symbol]=d;}
   });
   const today=new Date(getSessionDate());
   const daysSince=dateStr=>{if(!dateStr)return null;const d=new Date(dateStr);const diff=Math.round((today-d)/86400000);return diff>=0?diff:null;};
