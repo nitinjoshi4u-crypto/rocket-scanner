@@ -78,6 +78,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .pill-teal{background:rgba(20,184,166,.1);color:#14b8a6;border:1px solid rgba(20,184,166,.2)}
 .pill-rose{background:rgba(244,63,94,.1);color:#f43f5e;border:1px solid rgba(244,63,94,.3)}
 .pill-lime{background:rgba(132,204,22,.1);color:#84cc16;border:1px solid rgba(132,204,22,.2)}
+.pill-amber{background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.2)}
 .tabs{display:flex;gap:0;margin:16px 0 0;border-bottom:1px solid var(--border)}
 .tab{padding:10px 22px;cursor:pointer;font-size:13px;font-weight:600;color:var(--t3);border-bottom:2px solid transparent;transition:all .2s}
 .tab:hover{color:var(--t2)}.tab.act{color:var(--fire);border-bottom-color:var(--fire)}
@@ -631,7 +632,7 @@ function parseBhavdata(text){
   parseCSV(text).forEach(r=>{
     const sym=normSym(r['SYMBOL']);
     if(!sym||(r['SERIES']||'').trim()!=='EQ')return;
-    NSE_BHAV[sym]={delivPct:num(r['DELIV_PER']),nseVol:num(r['TTL_TRD_QNTY'])};
+    NSE_BHAV[sym]={delivPct:num(r['DELIV_PER']),nseVol:num(r['TTL_TRD_QNTY']),close:num(r['CLOSE']||r['CLOSE_PRICE']||r['ClosePrice'])};
   });
 }
 function parse52W(text){
@@ -1306,6 +1307,10 @@ function renderStats(){
   const fp=0; // freshness penalty removed
   if(fp>0)pills.push(`<span class="info-pill pill-gray">❄ ${fp} freshness-penalised (near 52W high)</span>`);
   if(!NSE_LOADED)pills.push(`<span class="info-pill pill-gray">ℹ Drop NSE ZIP alongside TV CSV for delivery % &amp; 52W data</span>`);
+  if(TRADEBOOK_STATS&&TRADEBOOK_STATS.missedOppCount>0){
+    const tb=TRADEBOOK_STATS;
+    pills.push(`<span class="info-pill pill-amber" title="Stocks sold before close that kept rising. Avg missed: ${tb.avgMissedGain.toFixed(2)}% · TGT nudged +${tb.missedAdj.toFixed(2)}%">🎯 ${tb.missedOppCount} missed opportunit${tb.missedOppCount===1?'y':'ies'} · avg +${tb.avgMissedGain.toFixed(2)}% left on table · TGT nudged +${tb.missedAdj.toFixed(2)}%</span>`);
+  }
   const infoBarEl=document.getElementById('infoBar');
   infoBarEl.innerHTML=pills.join('');
   void infoBarEl.offsetHeight; // force layout so browser paints pills immediately
@@ -2859,7 +2864,27 @@ function parseTradebook(text){
   roundTrips.forEach(r=>{ const k=r.sym+'|'+r.buyDate; posMap[k]=(posMap[k]||0)+r.capital; });
   const avgCapital=meanArr(Object.values(posMap));
   const adaptiveSL=+Math.abs(medianLossPct).toFixed(2);
-  const adaptiveTGT=+(Math.abs(medianWinPct)+0.1).toFixed(2);
+
+  // Missed opportunity: for each sym, find its most recent sell, compare against bhav close.
+  // If close > sellPrice → missed gain. Average across all such stocks, cap at 2%.
+  // Nudge TGT by 25% of avg missed gain (in addition to the base +0.1% nudge).
+  const lastSellBySymMap={};
+  roundTrips.forEach(r=>{
+    if(!lastSellBySymMap[r.sym]||r.sellDate>lastSellBySymMap[r.sym].sellDate)
+      lastSellBySymMap[r.sym]=r;
+  });
+  const missedGains=[];
+  Object.values(lastSellBySymMap).forEach(r=>{
+    const bhav=NSE_BHAV[r.sym];
+    if(!bhav||bhav.close==null||bhav.close<=r.sellPrice) return;
+    const missed=(bhav.close-r.sellPrice)/r.sellPrice*100;
+    if(missed>0&&missed<30) missedGains.push(missed); // cap outliers (halt stocks etc)
+  });
+  const avgMissedGain=missedGains.length?missedGains.reduce((s,v)=>s+v,0)/missedGains.length:0;
+  const missedAdj=+Math.min(avgMissedGain*0.25,2).toFixed(2); // cap nudge at 2%
+  const missedOppCount=missedGains.length;
+
+  const adaptiveTGT=+(Math.abs(medianWinPct)+0.1+missedAdj).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
 
   const bookedByDate={};
@@ -3021,7 +3046,7 @@ function parseTradebook(text){
     medianWinPct:+medianWinPct.toFixed(2), medianLossPct:+medianLossPct.toFixed(2),
     p75Win:+p75Win.toFixed(2), p25Loss:+p25Loss.toFixed(2),
     avgHoldDays:+avgHoldDays.toFixed(2), avgCapital:+Math.round(avgCapital),
-    adaptiveSL, adaptiveTGT, minExitPct,
+    adaptiveSL, adaptiveTGT, minExitPct, missedOppCount, avgMissedGain:+avgMissedGain.toFixed(2), missedAdj,
     riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
     lastBooked,
     bestHour, bestHourAvgPct:bestHour!==null?+bestHourAvgPct.toFixed(2):null,
