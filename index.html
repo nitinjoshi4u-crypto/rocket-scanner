@@ -2402,8 +2402,8 @@ function applyFilters(){
         if(d.buys>0&&d.sells===0){
           // New delivery buy today — treat as held
           heldPos[sym]={qty:d.buys,avg:d.buyPrice};
-        } else if(d.buys>0&&d.sells>0){
-          // Intraday round trip — suppress re-entry same day (qty=0 sentinel)
+        } else if(d.sells>0){
+          // Sold today (intraday or delivery exit) — suppress re-entry same day
           heldPos[sym]={qty:0,avg:0};
         }
       });
