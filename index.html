@@ -3178,6 +3178,18 @@ function showGttPopup(){
   const rows=Object.values(rowMap);
   if(!rows.length){showToast('No holdings or open positions.',3000,true);return;}
 
+  // Build last buy date per symbol from tradebook trips
+  const lastBuyDateMap={};
+  (TRADEBOOK_STATS?.tripsData||[]).forEach(r=>{
+    if(!lastBuyDateMap[r.sym]||r.buyDate>lastBuyDateMap[r.sym]) lastBuyDateMap[r.sym]=r.buyDate;
+  });
+  // Also check today's orders for stocks bought today
+  (ORDERS_TODAY||[]).forEach(o=>{
+    if(o.type==='BUY'){const d=(o.time||'').substring(0,10);if(d&&(!lastBuyDateMap[o.symbol]||d>lastBuyDateMap[o.symbol]))lastBuyDateMap[o.symbol]=d;}
+  });
+  const today=new Date(getSessionDate());
+  const daysSince=dateStr=>{if(!dateStr)return null;const d=new Date(dateStr);const diff=Math.round((today-d)/86400000);return diff>=0?diff:null;};
+
   const fmtp=v=>v!=null&&v>0?v.toFixed(2):'—';
 
   // Pre-compute pnlPct for sorting
@@ -3191,7 +3203,8 @@ function showGttPopup(){
     const tgtPrice=avgBuy>0?parseFloat(tick(avgBuy*(1+tgtPct/100)).toFixed(2)):null;
     const slPrice=avgBuy>0?parseFloat(tick(avgBuy*(1-slPct/100)).toFixed(2)):null;
     const pnlPct=(ltp!=null&&ltp>0&&avgBuy>0)?((ltp-avgBuy)/avgBuy*100):null;
-    return{...r,avgBuy,ltp,slPct,tgtPct,tgtPrice,slPrice,pnlPct};
+    const daysHeld=daysSince(lastBuyDateMap[r.symbol]??null);
+    return{...r,avgBuy,ltp,slPct,tgtPct,tgtPrice,slPrice,pnlPct,daysHeld};
   });
   // Sort by P&L% descending (nulls last)
   enriched.sort((a,b)=>{
@@ -3203,14 +3216,16 @@ function showGttPopup(){
 
   let tbodyHtml='';
   enriched.forEach(r=>{
-    const {avgBuy,ltp,slPct,tgtPct,tgtPrice,slPrice,pnlPct}=r;
+    const {avgBuy,ltp,slPct,tgtPct,tgtPrice,slPrice,pnlPct,daysHeld}=r;
     const pnlColor=pnlPct==null?'var(--t2)':pnlPct>=0?'var(--green)':'var(--red)';
+    const daysColor=daysHeld==null?'var(--t3)':daysHeld>10?'var(--red)':daysHeld>5?'var(--amber)':'var(--t2)';
     tbodyHtml+=`<tr>
       <td style="font-weight:700;color:var(--t1)">${r.symbol}</td>
       <td>${r.qty}</td>
       <td>${fmtp(avgBuy)}</td>
       <td style="color:var(--t2)">${ltp!=null&&ltp>0?fmtp(ltp):'—'}</td>
       <td style="color:${pnlColor}">${pnlPct!=null?(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%':'—'}</td>
+      <td style="color:${daysColor};font-weight:600">${daysHeld!=null?daysHeld+'d':'—'}</td>
       <td style="color:var(--red);font-weight:700">${slPrice!=null?fmtp(slPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(-${slPct.toFixed(2)}%)</span></td>
       <td style="color:var(--green);font-weight:700">${tgtPrice!=null?fmtp(tgtPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(+${tgtPct.toFixed(2)}%)</span></td>
     </tr>`;
@@ -3232,6 +3247,7 @@ function showGttPopup(){
           <th>Avg Cost</th>
           <th>LTP</th>
           <th>P&amp;L%</th>
+          <th>Days</th>
           <th style="color:var(--red)">SL ₹</th>
           <th style="color:var(--green)">Target ₹</th>
         </tr></thead>
