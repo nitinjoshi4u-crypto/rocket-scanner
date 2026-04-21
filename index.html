@@ -3666,30 +3666,16 @@ function loadFilterState(){
 
   // Step 7: PREV_SNAP already loaded by IIFE above (previous-day data only)
 
-  // Step 7b: Fetch Rocket_Brain.json from repo.
-  // Cold start: load everything. Warm start: overwrite only perf keys if repo
-  // brain has a newer _exportedAt timestamp than what's already loaded locally.
-  {
-    const PERF_KEYS=['rs_tradebook','rs_orders','rs_holdings','rs_positions'];
-    const isCold=!TRADEBOOK_STATS&&!ALL.length;
-    const localTs=localStorage.getItem('rs_brain_ts')||'';
+  // Step 7b: If no local data, try fetching Rocket_Brain.json from repo as fallback
+  if(!TRADEBOOK_STATS&&!ALL.length){
     fetch('Rocket_Brain.json?v='+Date.now()).then(r=>r.ok?r.json():null).then(brain=>{
       if(!brain) return;
-      const repoTs=brain._exportedAt||brain._ts||'';
-      // Only sync if cold start OR repo brain is newer than what we loaded last time
-      if(!isCold&&repoTs&&repoTs<=localTs) return;
-      let changed=false;
       Object.entries(brain).forEach(([k,v])=>{
         if(k.startsWith('_')) return;
-        if(isCold||PERF_KEYS.includes(k)){
-          try{localStorage.setItem(k, typeof v==='string'?v:JSON.stringify(v));changed=true;}catch(e){}
-        }
+        try{localStorage.setItem(k, typeof v==='string'?v:JSON.stringify(v));}catch(e){}
       });
-      if(changed){
-        if(repoTs) localStorage.setItem('rs_brain_ts',repoTs);
-        showToast('Synced latest session from repo…',1500);
-        setTimeout(()=>location.reload(),1500);
-      }
+      showToast('Loading brain from repo…',1500);
+      setTimeout(()=>location.reload(),1500);
     }).catch(()=>{});
   }
 
