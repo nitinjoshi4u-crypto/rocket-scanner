@@ -724,9 +724,12 @@ function pctRank(arr){
 // ── Engine ──
 function runEngine(raw, sessionTag){
   if(!raw.length) return;
-  // Session dedup: don't re-increment if same data uploaded again
-  // Market hours guard: don't accumulate correlations outside 9:00-16:00 IST
-  const isNewSession = (!sessionTag || !ACC_CORR || ACC_CORR.lastTag !== sessionTag) && isMarketHours();
+  // Observation dedup: rolling 5-min gap from last ACCEPTED observation timestamp.
+  // Rejected uploads don't reset the clock — only accepted ones update lastObsTimestamp.
+  // Market hours guard: don't accumulate outside 9:00-16:00 IST.
+  const _lastObsTs=ACC_CORR?.lastObsTimestamp||0;
+  const _minsSinceLast=(Date.now()-_lastObsTs)/60000;
+  const isNewSession = _minsSinceLast>=5 && isMarketHours();
 
   // ── Auto-detect columns from CSV headers ──
   const allHeaders = Object.keys(raw[0]);
@@ -1046,7 +1049,8 @@ function runEngine(raw, sessionTag){
 
   // Also update combined accumulator (legacy — used as fallback for regimes with <2 sessions)
   const newAcc={corr:{},sessions:(ACC_CORR?ACC_CORR.sessions||0:0)+(isNewSession?1:0),
-                lastUpdated:new Date().toISOString(),laggedNote:laggedNote,lastTag:sessionTag||null};
+                lastUpdated:new Date().toISOString(),laggedNote:laggedNote,lastTag:sessionTag||null,
+                lastObsTimestamp:isNewSession?Date.now():(ACC_CORR?.lastObsTimestamp||0)};
   for(const f of FEATS) newAcc.corr[f]=targetCorr[f];
   ACC_CORR=newAcc;
   try{localStorage.setItem(CORR_STORE,JSON.stringify(ACC_CORR));}catch(e){}
@@ -3348,10 +3352,9 @@ async function processFiles(files){
     setMsg('Running mRMR engine across '+(raw.length)+' stocks...');
     await new Promise(r=>setTimeout(r,60));
     window._lastRawTV=raw;
-    // Observation tag: 5-minute windows — uploads within same 5-min slot don't double-count.
-    const {mins:_nowMins}=istNow();
-    const _slot=Math.floor(_nowMins/5);
-    const sessionTag=getSessionDate()+':'+_slot;
+    // Observation tag: rolling 5-minute gap from last ACCEPTED observation.
+    // Rejected uploads don't reset the clock — only accepted ones do.
+    const sessionTag=getSessionDate()+':'+Date.now();
     ALL=runEngine(raw, sessionTag);
     ALL.sort((a,b)=>b.rocketScore-a.rocketScore);
     // Save scan results only — engineData is too large (N² interCorr matrix)
