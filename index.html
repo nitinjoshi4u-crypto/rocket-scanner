@@ -2898,7 +2898,7 @@ function parseTradebook(text){
   // Missed opportunity: accumulated across all sell dates.
   // Each time bhav is loaded, compute missed gains for the most recent sell date
   // and merge into persistent store keyed by date. Aggregates grow over time.
-  const recentSellDate=dates[0]||null;
+  const recentSellDate=roundTrips.length?roundTrips.reduce((best,r)=>r.sellDate>best?r.sellDate:best,''):null;
   // Load accumulated store
   let missedOppStore={};
   try{const raw=localStorage.getItem(MISSED_OPP_STORE);if(raw)missedOppStore=JSON.parse(raw);}catch(e){}
@@ -2932,7 +2932,7 @@ function parseTradebook(text){
   const missedSyms=[...new Set(allMissed.map(m=>m.sym))];
   const missedOppDates=Object.keys(missedOppStore).length;
 
-  const adaptiveTGT=+(Math.abs(medianWinPct)+0.1+missedAdj).toFixed(2);
+  const adaptiveTGT=+(Math.abs(medianWinPct)+missedAdj).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
 
   const bookedByDate={};
