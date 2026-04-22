@@ -3625,8 +3625,8 @@ async function processFiles(files){
     ALL.sort((a,b)=>b.rocketScore-a.rocketScore);
     // Save scan results only — engineData is too large (N² interCorr matrix)
     try{
-      // Trim data for storage — exclude heavy display-only fields
-      const trimmed=ALL.map(s=>({...s,name:s.name?s.name.substring(0,20):s.symbol}));
+      // Trim data for storage — exclude _features (large, display-only, not needed on restore)
+      const trimmed=ALL.map(s=>{const {_features,...rest}=s;return{...rest,name:rest.name?rest.name.substring(0,20):rest.symbol};});
       const toSave={data:trimmed,fileTag:tvFile.name+' · '+raw.length+' stocks',ts:Date.now()};
       localStorage.setItem(ALL_STORE,JSON.stringify(toSave));
     }catch(e){console.warn('Could not save scan data',e);}
