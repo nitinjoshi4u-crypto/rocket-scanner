@@ -373,6 +373,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 <script>
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
+let SCORE_MAP={}; // {symbol → rocketScore} for ALL parsed stocks including filtered-out ones
 let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
 let ENGINE_DATA={};
@@ -1163,6 +1164,28 @@ function runEngine(raw, sessionTag){
     for(const f of FEATS){
       r._features[f]=d[f]!=null?d[f]:null;
     }
+  });
+
+  // ── Score ALL parsed stocks (including hard-filter exclusions) into SCORE_MAP ──
+  // Filtered stocks get their actual score; excluded stocks are scored against filtered distribution
+  SCORE_MAP={};
+  results.forEach(r=>{SCORE_MAP[r.symbol]=r.rocketScore;});
+  const _sf={};
+  for(const f of FEATS)_sf[f]=filtered.map(d=>d[f]).filter(v=>v!=null&&!isNaN(v)).sort((a,b)=>a-b);
+  const _filtSet=new Set(filtered.map(d=>d.symbol));
+  parsed.forEach(d=>{
+    if(_filtSet.has(d.symbol))return;
+    let rs=0,mw=0;
+    for(const f of FEATS){
+      const w=weights[f],v=d[f];
+      if(v==null||isNaN(v))continue;
+      const arr=_sf[f];if(!arr.length)continue;
+      let lo=0,hi=arr.length;
+      while(lo<hi){const mid=(lo+hi)>>1;if(arr[mid]<=v)lo=mid+1;else hi=mid;}
+      const rank=arr.length>1?Math.min(1,Math.max(0,(lo-0.5)/(arr.length-1))):0.5;
+      mw+=w; rs+=w*(targetCorr[f]>=0?rank:(1-rank));
+    }
+    SCORE_MAP[d.symbol]=mw>0?Math.round(rs/mw*1000)/10:0;
   });
 
   ENGINE_DATA={targetCorr,targetCorrToday,interCorr,mrmr,weights,features:FEATS,labels:LABELS,top10Feats,rocketCount:topN,rocketThreshold:ROCKET_THRESHOLD,accSessions:ACC_CORR?.sessions||1,laggedNote:ACC_CORR?.laggedNote||'',
@@ -3357,9 +3380,8 @@ function showGttPopup(){
   let tbodyHtml='';
   enriched.forEach(r=>{
     const {avgBuy,ltp,slPct,tgtPct,tgtPrice,slPrice,pnlPct,daysHeld}=r;
-    const allStock=ALL.find(s=>s.symbol===r.symbol);
-    const score=allStock?.rocketScore??null;
-    const scoreDisp=score!=null?Math.round(score):ALL.length?'N/A':'—';
+    const score=SCORE_MAP.hasOwnProperty(r.symbol)?SCORE_MAP[r.symbol]:null;
+    const scoreDisp=score!=null?Math.round(score):'—';
     const scoreColor=score==null?'var(--t3)':score>=70?'var(--green)':score>=50?'var(--amber)':'var(--t2)';
     // Edge = P&L velocity × score multiplier
     const pnlVelocity=pnlPct!=null?pnlPct/Math.max(1,daysHeld??1):null;
@@ -3809,6 +3831,7 @@ function loadFilterState(){
           flags: [],
           ...s,
         }));
+        ALL.forEach(s=>{if(s.rocketScore!=null)SCORE_MAP[s.symbol]=s.rocketScore;});
         FILT=[...ALL];
         // Auto-select all stocks on restore
         SELECTED=new Set(ALL.map(s=>s.symbol));
