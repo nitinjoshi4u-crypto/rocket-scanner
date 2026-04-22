@@ -1459,18 +1459,30 @@ function computePerfStats(trips){
     symMap[r.sym].pnlPcts.push(r.netPnlPct);
   });
   const symBreakdown=Object.values(symMap).map(s=>({...s,netPnl:+s.netPnl.toFixed(0),winRate:+(s.wins/s.trades*100).toFixed(0),avgPct:+meanArr(s.pnlPcts).toFixed(2)})).sort((a,b)=>b.netPnl-a.netPnl);
-  // Hour breakdown
+  // Buy hour breakdown (30-min buckets)
   const hourMap={};
   trips.forEach(r=>{
     if(!r.buyTime) return;
     const m=r.buyTime.match(/(\d{1,2}):(\d{2})/);if(!m)return;
     const totalMin=parseInt(m[1])*60+parseInt(m[2]);
-    const q=Math.floor(totalMin/15)*15; // round down to 15-min bucket (minutes since midnight)
+    const q=Math.floor(totalMin/30)*30;
     if(!hourMap[q]) hourMap[q]={hour:q,trades:0,wins:0,pnlPcts:[]};
     hourMap[q].trades++; if(r.netPnl>0)hourMap[q].wins++;
     hourMap[q].pnlPcts.push(r.netPnlPct);
   });
   const hourBreakdown=Object.values(hourMap).map(h=>({...h,winRate:+(h.wins/h.trades*100).toFixed(0),avgPct:+meanArr(h.pnlPcts).toFixed(2)})).sort((a,b)=>a.hour-b.hour);
+  // Sell hour breakdown (30-min buckets)
+  const sellHourMap={};
+  trips.forEach(r=>{
+    if(!r.sellTime) return;
+    const m=r.sellTime.match(/(\d{1,2}):(\d{2})/);if(!m)return;
+    const totalMin=parseInt(m[1])*60+parseInt(m[2]);
+    const q=Math.floor(totalMin/30)*30;
+    if(!sellHourMap[q]) sellHourMap[q]={hour:q,trades:0,wins:0,pnlPcts:[]};
+    sellHourMap[q].trades++; if(r.netPnl>0)sellHourMap[q].wins++;
+    sellHourMap[q].pnlPcts.push(r.netPnlPct);
+  });
+  const sellHourBreakdown=Object.values(sellHourMap).map(h=>({...h,winRate:+(h.wins/h.trades*100).toFixed(0),avgPct:+meanArr(h.pnlPcts).toFixed(2)})).sort((a,b)=>a.hour-b.hour);
   // Best buy hour
   const eligHours=hourBreakdown.filter(h=>h.trades>=3);
   const bestHourObj=eligHours.length?eligHours.reduce((b,h)=>h.avgPct>b.avgPct?h:b,eligHours[0]):null;
@@ -1481,7 +1493,7 @@ function computePerfStats(trips){
     largestWinRs, largestLossRs, maxDrawdown, maxLossStreak:maxStreak, maxWinStreak,
     pctProfitableDays, profitableDays, totalTradingDays,
     avgDailyPnl, avgHoldDays, avgCapital,
-    symBreakdown, hourBreakdown,
+    symBreakdown, hourBreakdown, sellHourBreakdown,
     bestHour:bestHourObj?.hour??null, bestHourAvgPct:bestHourObj?+bestHourObj.avgPct.toFixed(2):null,
     bestHourWinRate:bestHourObj?.winRate??null, bestHourTrades:bestHourObj?.trades??null,
   };
@@ -1584,13 +1596,25 @@ function renderPerformance(){
   // Edge = (Win% × Avg%) × min(1, lots/5)
   const hourRows=(p.hourBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}));
   const hourCols=[
-    {key:'hour',label:'Buy Time',align:'left',fmt:v=>{const hh=Math.floor(v/60),mm=v%60,h12=hh===0?12:hh>12?hh-12:hh,mer=hh<12?'AM':'PM';return h12+':'+(mm===0?'00':mm)+' '+mer;},clrFn:()=>'var(--t1)'},
+    {key:'hour',label:'Buy Time',align:'left',fmt:v=>{const hh=Math.floor(v/60),mm=v%60,h12=hh===0?12:hh>12?hh-12:hh,mer=hh<12?'AM':'PM';return h12+':'+(mm===0?'00':String(mm).padStart(2,'0'))+' '+mer;},clrFn:()=>'var(--t1)'},
     {key:'trades',label:'Lots',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
     {key:'winRate',label:'Win%',align:'right',fmt:v=>v+'%',clrFn:v=>v>=60?'var(--green)':v>=40?'var(--amber)':'var(--red)'},
     {key:'avgPct',label:'Avg%',align:'right',fmt:fmtPct,clrFn:clr},
     {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(2),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
   ];
   const hourTbl=makeSortableTable('perf-hour',hourCols,hourRows,'edge',-1);
+
+  // ── Sell hour table ──
+  const timeFmt=v=>{const hh=Math.floor(v/60),mm=v%60,h12=hh===0?12:hh>12?hh-12:hh,mer=hh<12?'AM':'PM';return h12+':'+(mm===0?'00':String(mm).padStart(2,'0'))+' '+mer;};
+  const sellHourRows=(p.sellHourBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}));
+  const sellHourCols=[
+    {key:'hour',label:'Sell Time',align:'left',fmt:timeFmt,clrFn:()=>'var(--t1)'},
+    {key:'trades',label:'Lots',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
+    {key:'winRate',label:'Win%',align:'right',fmt:v=>v+'%',clrFn:v=>v>=60?'var(--green)':v>=40?'var(--amber)':'var(--red)'},
+    {key:'avgPct',label:'Avg%',align:'right',fmt:fmtPct,clrFn:clr},
+    {key:'edge',label:'Edge',align:'right',bold:true,fmt:v=>v.toFixed(2),clrFn:v=>v>100?'var(--green)':v>0?'var(--amber)':'var(--red)'},
+  ];
+  const sellHourTbl=makeSortableTable('perf-sell-hour',sellHourCols,sellHourRows,'edge',-1);
 
   // ── Latest session — Orders.csv if available (today), else last tradebook date ──
   let todayHtml='';
@@ -1705,9 +1729,10 @@ function renderPerformance(){
       ${monthRows.length?perfCard('Monthly Breakdown',monthTbl.getHtml()):''}
       ${p.symBreakdown.length?perfCard('Stocks',symTbl.getHtml(),'360px'):''}
       ${p.hourBreakdown.length?perfCard('Buy Hour',hourTbl.getHtml(),'280px'):''}
+      ${p.sellHourBreakdown?.length?perfCard('Sell Hour',sellHourTbl.getHtml(),'280px'):''}
     </div>`;
 
-  setTimeout(()=>{monthTbl.render();symTbl.render();hourTbl.render();},0);
+  setTimeout(()=>{monthTbl.render();symTbl.render();hourTbl.render();sellHourTbl.render();},0);
 }
 
 function renderMethodology(){
@@ -2881,7 +2906,7 @@ function parseTradebook(text){
           const pnlPct=((t.price-b.price)/b.price)*100;
           const holdDays=Math.round((new Date(t.date)-new Date(b.date))/86400000);
           const capital=b.price*matched;
-          roundTrips.push({sym,buyPrice:b.price,sellPrice:t.price,qty:matched,pnlPct,holdDays,capital,buyDate:b.date,sellDate:t.date,buyTime:b.time||b.date});
+          roundTrips.push({sym,buyPrice:b.price,sellPrice:t.price,qty:matched,pnlPct,holdDays,capital,buyDate:b.date,sellDate:t.date,buyTime:b.time||b.date,sellTime:t.time||t.date});
           b.qty-=matched;
           sellQty-=matched;
           if(b.qty<=0) buyQueue.shift();
