@@ -336,7 +336,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
  <div class="tp act" id="tab0">
   <button class="ctrls-toggle" id="ctrlsToggle" onclick="toggleFilters()">⚙ Filters <span id="ctrlsArrow">▼</span></button>
   <div class="ctrls" id="ctrlsPanel">
-   <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Min Score</span><input type="number" id="fMinScore" placeholder="70" value="70" min="0" max="100" step="1" style="width:65px;padding:8px 10px;background:var(--bg-card);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:var(--fire);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='rgba(249,115,22,.4)'" oninput="applyFilters()" title="Show only stocks with Rocket Score ≥ this value"></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Min Score</span><input type="number" id="fMinScore" placeholder="70" value="70" min="0" max="100" step="0.1" style="width:65px;padding:8px 10px;background:var(--bg-card);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:var(--fire);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='rgba(249,115,22,.4)'" oninput="applyFilters()" title="Show only stocks with Rocket Score ≥ this value"></div>
    <div class="fg"><span class="fg-lbl">Price ₹</span><div style="display:flex;gap:5px;align-items:center">
    <input type="number" id="fPriceMin" placeholder="Min" min="0" style="padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()">
    <span style="color:var(--t3);font-size:11px">–</span>
@@ -3356,6 +3356,7 @@ function showGttPopup(){
     const allStock=ALL.find(s=>s.symbol===r.symbol);
     const score=allStock?.rocketScore??null;
     const scoreColor=score==null?'var(--t3)':score>=70?'var(--green)':score>=50?'var(--amber)':'var(--t2)';
+    const edgeSignal=score==null?{label:'—',color:'var(--t3)'}:score>=70?{label:'↑ Top Up',color:'var(--green)'}:score>=50?{label:'→ Hold',color:'var(--amber)'}:{label:'↓ Exit',color:'var(--red)'};
     const pnlColor=pnlPct==null?'var(--t2)':pnlPct>=0?'var(--green)':'var(--red)';
     const daysColor=daysHeld==null?'var(--t3)':daysHeld>10?'var(--red)':daysHeld>5?'var(--amber)':'var(--t2)';
     tbodyHtml+=`<tr>
@@ -3366,6 +3367,7 @@ function showGttPopup(){
       <td style="color:var(--t2)">${ltp!=null&&ltp>0?fmtp(ltp):'—'}</td>
       <td style="color:${pnlColor}">${pnlPct!=null?(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%':'—'}</td>
       <td style="color:${scoreColor};font-weight:600">${score!=null?Math.round(score):'—'}</td>
+      <td style="color:${edgeSignal.color};font-weight:700;white-space:nowrap">${edgeSignal.label}</td>
       <td style="color:${daysColor};font-weight:600">${daysHeld!=null?daysHeld+'d':'—'}</td>
       <td style="color:var(--red);font-weight:700">${slPrice!=null?fmtp(slPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(-${slPct.toFixed(2)}%)</span></td>
       <td style="color:var(--green);font-weight:700">${tgtPrice!=null?fmtp(tgtPrice):'—'}<br><span style="font-size:10px;color:var(--t3)">(+${tgtPct.toFixed(2)}%)</span></td>
@@ -3393,6 +3395,7 @@ function showGttPopup(){
           <th>LTP</th>
           <th>P&amp;L%</th>
           <th>Score</th>
+          <th>Edge</th>
           <th>Days</th>
           <th style="color:var(--red)">SL ₹</th>
           <th style="color:var(--green)">Target ₹</th>
