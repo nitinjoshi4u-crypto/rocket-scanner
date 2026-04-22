@@ -3298,7 +3298,9 @@ function computeMissedOpp(){
 // Returns {sl, tgt} as positive percentages.
 function calcAtrSLTGT(){
   const sl=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
-  const tgt=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+  const rawTgt=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+  const floor=TRADEBOOK_STATS?TRADEBOOK_STATS.minExitPct:1;
+  const tgt=+Math.max(rawTgt,floor).toFixed(2);
   return {sl, tgt};
 }
 
