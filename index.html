@@ -377,6 +377,7 @@ let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let SCORE_MAP={}; // {symbol → rocketScore} for ALL parsed stocks including filtered-out ones
 let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
+let PERF_TRADE_WINDOWS=[]; // cached trade window rows from renderPerformance — used by current-window pill
 let ENGINE_DATA={};
 let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,atr:0,deliv:0};
 let SUPPRESSED_HELD=0; // count of stocks hidden because already held in POSITIONS
@@ -1556,6 +1557,21 @@ function renderStats(){
   const fp=0; // freshness penalty removed
   if(fp>0)pills.push(`<span class="info-pill pill-gray">❄ ${fp} freshness-penalised (near 52W high)</span>`);
   if(!NSE_LOADED)pills.push(`<span class="info-pill pill-gray">ℹ Drop NSE ZIP alongside TV CSV for delivery % &amp; 52W data</span>`);
+  if(PERF_TRADE_WINDOWS.length){
+    const {mins}=istNow();
+    const curBucket=Math.floor(mins/30)*30;
+    const cw=PERF_TRADE_WINDOWS.find(r=>r.hour===curBucket);
+    if(cw){
+      const hh=Math.floor(curBucket/60),mm=curBucket%60,h12=hh===0?12:hh>12?hh-12:hh,mer=hh<12?'AM':'PM';
+      const slotLabel=h12+':'+(mm===0?'00':String(mm).padStart(2,'0'))+' '+mer;
+      const buyPart=cw.bWin!=null?`Buy ${cw.bWin}% win`:'';
+      const sellPart=cw.sWin!=null?`Sell ${cw.sWin}% win`:'';
+      const sigPart=cw.action!=='&mdash;'?` · <strong>${cw.action}</strong>`:'';
+      const parts=[buyPart,sellPart].filter(Boolean).join(' · ');
+      const sigColor=cw.actionC||'var(--t2)';
+      if(parts) pills.push(`<span class="info-pill" style="background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.3);color:var(--t2)" title="Historical win rates for the current 30-min slot from your tradebook">🕐 ${slotLabel}: ${parts}${sigPart}</span>`);
+    }
+  }
   try{
     const moRaw=localStorage.getItem(MISSED_OPP_STORE);
     if(moRaw){
@@ -1847,15 +1863,23 @@ function renderPerformance(){
   const _buyMap=Object.fromEntries((p.hourBreakdown||[]).map(r=>[r.hour,{...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}]));
   const _sellMap=Object.fromEntries((p.sellHourBreakdown||[]).map(r=>[r.hour,{...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}]));
   const _allHours=[...new Set([...Object.keys(_buyMap),...Object.keys(_sellMap)].map(Number))].sort((a,b)=>a-b);
+  // Median-based signal: mark slots above the median as "good" for buy/sell independently
+  const _med=arr=>{if(!arr.length)return 0;const s=[...arr].sort((a,b)=>a-b);return s[Math.floor(s.length/2)];};
+  const _medBuy=_med(Object.values(_buyMap).map(r=>r.edge));
+  const _medSell=_med(Object.values(_sellMap).map(r=>r.edge));
   const tradeWindowRows=_allHours.map(h=>{
     const b=_buyMap[h], s=_sellMap[h];
     const bEdge=b?b.edge:null, sEdge=s?s.edge:null;
+    const goodBuy=bEdge!=null&&bEdge>=_medBuy;
+    const goodSell=sEdge!=null&&sEdge>=_medSell;
     let action='&mdash;', actionC='var(--t3)';
-    if(bEdge!=null&&sEdge!=null&&bEdge>2&&sEdge>2){action='Enter + Exit';actionC='var(--cyan)';}
-    else if(bEdge!=null&&bEdge>2&&(sEdge==null||sEdge<=0)){action='Enter';actionC='var(--green)';}
-    else if(sEdge!=null&&sEdge>2&&(bEdge==null||bEdge<=0)){action='Exit';actionC='var(--amber)';}
+    if(goodBuy&&goodSell){action='Enter + Exit';actionC='var(--cyan)';}
+    else if(goodBuy){action='Enter';actionC='var(--green)';}
+    else if(goodSell){action='Exit';actionC='var(--amber)';}
     return {hour:h,bTrades:b?b.trades:null,bWin:b?b.winRate:null,bEdge,sTrades:s?s.trades:null,sWin:s?s.winRate:null,sEdge,action,actionC};
   });
+  // Cache for current-window pill in renderStats
+  PERF_TRADE_WINDOWS=tradeWindowRows;
   const NA='<span style="color:var(--t3)">&mdash;</span>';
   const winClr=v=>v>=60?'var(--green)':v>=40?'var(--amber)':'var(--red)';
   const edgeClr=v=>v>2?'var(--green)':v>0?'var(--amber)':'var(--red)';
@@ -3672,7 +3696,6 @@ function exportBasket(){
   downloadBasket(orders,'Basket_Buy');
   const rejNote=rejectedCount>0?` · ${rejectedCount} skipped`:'';
   showToast(`<strong>Exported ${orders.length} BUY orders</strong>${rejNote} &mdash; SL ${sl.toFixed(1)}% &middot; TGT ${tgt.toFixed(1)}% &mdash; Import in Zerodha &rarr; Basket Orders`,4000);
-  setTimeout(()=>showToast('After import: use <strong>📋 GTT Values</strong> to set Stop Loss &amp; Target as OCO orders in Zerodha Holdings',5000),3500);
 }
 
 function showGttPopup(){
@@ -3819,7 +3842,6 @@ function exportGttBasket(){
   if(!orders.length){showToast('No valid orders (check Capital setting).',3000,true);return;}
   downloadBasket(orders,'Basket_Buy');
   showToast(`<strong>Exported ${Math.min(orders.length,20)} BUY orders</strong> &mdash; SL ${sl.toFixed(1)}% &middot; TGT ${tgt.toFixed(1)}% &mdash; Import in Zerodha &rarr; Basket Orders`,4000);
-  setTimeout(()=>showToast('After import: use <strong>📋 GTT Values</strong> to set Stop Loss &amp; Target as OCO orders in Zerodha Holdings',5000),3500);
 }
 
 // ── Basket export helper: Zerodha limits 20 orders per basket ──
@@ -4053,7 +4075,7 @@ async function processFiles(files){
           try{localStorage.setItem(OPEN_BUY_DATE_STORE,JSON.stringify(LAST_BUY_DATE_MAP));}catch(e){}
         }
       }
-      if(TRADEBOOK_STATS){renderStats();renderPerformance();}
+      if(TRADEBOOK_STATS){renderPerformance();renderStats();}
     }
     if(ordersFile){
       setMsg('Processing orders...');
@@ -4295,13 +4317,13 @@ function loadFilterState(){
     const pRaw=localStorage.getItem(POSITIONS_STORE);
     if(pRaw){ const parsed=JSON.parse(pRaw); if(Array.isArray(parsed)) POSITIONS=parsed; }
   }catch(e){ console.error('INIT positions restore failed:',e); }
-  // Step 3: Render stats
+  // Step 3b: Render performance tab first (populates PERF_TRADE_WINDOWS for the current-window pill)
+  try{ renderPerformance(); }catch(e){ console.error('INIT step3b renderPerformance failed:',e); }
+
+  // Step 3: Render stats (after renderPerformance so PERF_TRADE_WINDOWS is ready)
   try{
     if(ALL.length) renderStats();
   }catch(e){ console.error('INIT step3 renderStats failed:',e); }
-
-  // Step 3b: Render performance tab (tradebook-only, no ALL needed)
-  try{ renderPerformance(); }catch(e){ console.error('INIT step3b renderPerformance failed:',e); }
 
   // Step 4: Render methodology (only needs ENGINE_DATA from METH_STORE, not ALL)
   try{
