@@ -3220,6 +3220,16 @@ function parseTradebook(text){
     riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
     lastBooked
   };
+
+  // Build last buy date per symbol (latest buy trade date, no FIFO needed)
+  const lastBuyDateMap={};
+  Object.entries(bySymbol).forEach(([sym,trades])=>{
+    const buys=trades.filter(t=>t.type==='buy').map(t=>t.date).filter(Boolean).sort();
+    if(buys.length) lastBuyDateMap[sym]=buys[buys.length-1];
+  });
+  stats.lastBuyDateMap=lastBuyDateMap;
+  LAST_BUY_DATE_MAP=lastBuyDateMap;
+
   console.log('TRADEBOOK:',stats.roundTrips,'round trips,',stats.winners,'winners ('+stats.winRate+'%), adaptive SL:'+stats.adaptiveSL+'% TGT:'+stats.adaptiveTGT+'%');
   return stats;
 }
@@ -3260,6 +3270,99 @@ function getSellAvgPrice(symbol){
     if(holdingQty>0) return {qty:holdingQty, avg:holdingAvg, source:'holdings'};
   }
   return null;
+}
+
+function showGttPopup(){
+  const tick=v=>Math.round(v/0.05)*0.05;
+  const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
+  const adaptiveTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
+
+  // Merge HOLDINGS + POSITIONS into one list (deduplicated by symbol)
+  const symSet=new Set();
+  const rows=[];
+  const addSym=(sym,qty,avgCost,ltpSrc)=>{
+    if(!sym||qty<=0||symSet.has(sym)) return;
+    symSet.add(sym);
+    // LTP priority: ALL scanner > Positions CSV LTP > Holdings CSV LTP
+    const scannerRow=ALL.find(s=>s.symbol===sym);
+    const ltp=scannerRow?.price
+      ||(POSITIONS?.find(p=>p.symbol===sym)?.ltp)
+      ||(HOLDINGS?.find(h=>h.symbol===sym)?.ltp)
+      ||ltpSrc||null;
+    const avg=avgCost||HOLD_COST_MAP[sym]||null;
+    const pnlPct=(avg&&ltp)?+((ltp-avg)/avg*100).toFixed(2):null;
+    // Days held: today's Orders.csv BUY date → tradebook last buy date
+    const todayBuy=ORDERS_TODAY?.find(o=>o.symbol===sym&&o.type==='buy');
+    const buyDateStr=todayBuy?(todayBuy.time||'').substring(0,10)||null:LAST_BUY_DATE_MAP[sym]||null;
+    const daysHeld=buyDateStr?Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000):null;
+    const tgtPrice=avg?tick(avg*(1+adaptiveTGT/100)):null;
+    const slPrice=avg?tick(avg*(1-adaptiveSL/100)):null;
+    rows.push({sym,qty,avg,ltp,pnlPct,daysHeld,tgtPrice,slPrice});
+  };
+  if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) addSym(p.symbol,p.qty,p.avg||p.avgCost,p.ltp);});
+  if(HOLDINGS?.length) HOLDINGS.forEach(h=>{if(h.qty>0) addSym(h.symbol,h.qty,h.avgCost,h.ltp);});
+
+  if(!rows.length){showToast('No holdings or open positions found.',3000,true);return;}
+
+  // Sort by P&L% descending (nulls last, then alphabetical)
+  rows.sort((a,b)=>{
+    if(a.pnlPct===null&&b.pnlPct===null) return a.sym.localeCompare(b.sym);
+    if(a.pnlPct===null) return 1;
+    if(b.pnlPct===null) return -1;
+    return b.pnlPct-a.pnlPct;
+  });
+
+  const fmtRs=v=>v==null?'—':'₹'+tick(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtPct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(2)+'%';
+  const clr=v=>v==null?'var(--t3)':v>=0?'var(--green)':'var(--red)';
+
+  const tbody=rows.map(r=>`
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:700;font-size:12px">${r.sym}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px">${r.qty}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px">${fmtRs(r.avg)}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px">${fmtRs(r.ltp)}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:${clr(r.pnlPct)};font-weight:700">${fmtPct(r.pnlPct)}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px;color:var(--t2)">${r.daysHeld!=null?r.daysHeld+'d':'—'}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--green)">${fmtRs(r.tgtPrice)}<span style="font-size:10px;color:var(--t3);margin-left:4px">+${adaptiveTGT}%</span></td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--red)">${fmtRs(r.slPrice)}<span style="font-size:10px;color:var(--t3);margin-left:4px">-${adaptiveSL}%</span></td>
+    </tr>`).join('');
+
+  const existing=document.getElementById('gttModal');
+  if(existing) existing.remove();
+
+  const modal=document.createElement('div');
+  modal.id='gttModal';
+  modal.style.cssText='position:fixed;inset:0;z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;background:rgba(0,0,0,.65);backdrop-filter:blur(4px)';
+  modal.innerHTML=`
+    <div style="background:var(--bg-card);border:1px solid var(--border-hi);border-radius:14px;width:100%;max-width:900px;padding:24px;box-shadow:0 16px 64px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:var(--t1)">📋 GTT Values — ${rows.length} positions</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:3px">Set these as OCO orders in Zerodha → Holdings tab. SL ${adaptiveSL}% · TGT ${adaptiveTGT}% (tradebook-derived)</div>
+        </div>
+        <button onclick="document.getElementById('gttModal').remove()" style="background:none;border:1px solid var(--border);color:var(--t3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border-hi)">
+              <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--t3);font-weight:600">Symbol</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--t3);font-weight:600">Qty</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--t3);font-weight:600">Avg Cost</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--t3);font-weight:600">LTP</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--t3);font-weight:600">P&amp;L%</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--t3);font-weight:600">Days Held</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--green);font-weight:600">Target ₹</th>
+              <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--red);font-weight:600">SL ₹</th>
+            </tr>
+          </thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal) modal.remove();});
+  document.body.appendChild(modal);
 }
 
 function exportBasket(){
@@ -3700,7 +3803,7 @@ async function initApp(){
     }catch(e){console.error('INIT step2d positions restore failed:',e);}
 
     // Step 2f: Restore tradebook stats
-    try{const tb=brain[TRADEBOOK_STORE];if(tb) TRADEBOOK_STATS=tb;}catch(e){}
+    try{const tb=brain[TRADEBOOK_STORE];if(tb){TRADEBOOK_STATS=tb;if(tb.lastBuyDateMap) LAST_BUY_DATE_MAP=tb.lastBuyDateMap;}}catch(e){}
 
     // Step 2g: Restore surveillance custom rules
     try{
