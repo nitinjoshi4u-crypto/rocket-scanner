@@ -933,8 +933,9 @@ function parseSurv(text){
   hdrs.forEach(h=>{hdrMap[String(h).trim().toLowerCase()]=h;});
   const activeRules=getSurvRules().map(rule=>({...rule,header:hdrMap[rule.column.toLowerCase()]||null}));
   activeRules.forEach(rule=>{SURV_RULE_HITS[rule.key]=0;});
-  // dataHdrs: exclude Symbol/ISIN-style identity columns from P&L correlation
-  const dataHdrs=hdrs.filter(h=>!/^(symbol|isin|series|company|name|date)/i.test(h.trim()));
+  // dataHdrs: exclude REG1 identity/metadata columns (not surveillance flags)
+  const _survNonFlag=new Set(['scripcode','symbol','nse exclusive','status','series']);
+  const dataHdrs=hdrs.filter(h=>{const hl=h.trim().toLowerCase();return !_survNonFlag.has(hl)&&!/^filler/i.test(h.trim());});
   rows.forEach(r=>{
     const sym=normSym(r['Symbol']);if(!sym)return;
     const hits=[];
@@ -2171,8 +2172,9 @@ function updateSurvCorrelation(){
   if(!Object.keys(holdPnl).length) return;
 
   let updated=false;
+  const _scNonFlag=new Set(['scripcode','symbol','nse exclusive','status','series']);
   SURV_HEADERS.forEach(col=>{
-    if(!col||/^(symbol|isin|series|company|name|date)/i.test(col.trim())) return;
+    if(!col) return;const _schl=col.trim().toLowerCase();if(_scNonFlag.has(_schl)||/^filler/i.test(col.trim())) return;
     const key=survRuleKey(col); if(!key) return;
     // Find held symbols flagged under this column
     const flagged=Object.entries(SURV_ALL_HITS)
