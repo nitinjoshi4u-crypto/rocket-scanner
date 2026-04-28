@@ -2117,8 +2117,7 @@ function buildHardFilterMethodologyHTML(E){
       ? `<button onclick="removeSurvRule('${row.ruleKey}')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:var(--red);font-size:10px;font-weight:700;cursor:pointer">Remove</button>`
       : `<span style="color:var(--t3);font-size:10px">${row.kind==='surv'?'Built-in':'Core'}</span>`;
     return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:8px 10px;color:${row.active?'var(--t1)':'var(--t3)'};font-weight:600;vertical-align:top">${escHtml(row.label)}${inactiveNote}</td>
-      <td style="padding:8px 10px;color:var(--t2);font-size:11px;vertical-align:top">${escHtml(row.criteria)}</td>
+      <td style="padding:8px 10px;color:${row.active?'var(--t1)':'var(--t3)'};font-size:11px;vertical-align:top">${escHtml(row.criteria)}${inactiveNote}</td>
       <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">${flaggedCell}</td>
       <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">${removedCell}</td>
       <td style="padding:8px 10px;text-align:right">${removeBtn}</td>
@@ -2141,8 +2140,7 @@ function buildHardFilterMethodologyHTML(E){
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="color:var(--t3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">
-            <th style="padding:6px 10px;text-align:left">Filter</th>
-            <th style="padding:6px 10px;text-align:left">Exact Column / Criteria</th>
+            <th style="padding:6px 10px;text-align:left">Filter / Column</th>
             <th style="padding:6px 10px;text-align:right">Flagged</th>
             <th style="padding:6px 10px;text-align:right">Removed</th>
             <th style="padding:6px 10px;text-align:right">Manage</th>
