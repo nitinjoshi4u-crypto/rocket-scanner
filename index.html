@@ -1762,6 +1762,11 @@ function renderPerformance(){
     return regCal[da<=db?a:b]||fallbackRegime||'?';
   };
   const allTripsRaw=tb.tripsData||[];
+  if(!allTripsRaw.length&&tb.roundTrips>0){
+    // Old brain data — tripsData field didn't exist before this version
+    el.innerHTML=`<div style="text-align:center;padding:80px 40px;color:var(--t2)"><div style="font-size:36px;margin-bottom:16px">🔄</div><div style="font-size:16px;font-weight:700;color:var(--t1);margin-bottom:8px">Re-upload TRADEBOOK.csv</div><div>Brain has ${tb.roundTrips} trades stored in the old format. Re-upload TRADEBOOK.csv once to rebuild with full trip data.</div></div>`;
+    return;
+  }
   const allTrips=allTripsRaw.map(r=>({...r,regime:nearestRegime(r.sellDate)}));
 
   const filteredByRegime=PERF_REGIME_FILTER==='all'?allTrips:allTrips.filter(r=>r.regime===PERF_REGIME_FILTER);
@@ -3026,7 +3031,7 @@ function parseTradebook(text){
     const buyQueue=[];
     for(const t of trades){
       if(t.type==='buy'){
-        buyQueue.push({qty:t.qty,price:t.price,date:t.date});
+        buyQueue.push({qty:t.qty,price:t.price,date:t.date,time:t.time});
       } else if(t.type==='sell'){
         let sellQty=t.qty;
         while(sellQty>0&&buyQueue.length>0){
@@ -3035,7 +3040,7 @@ function parseTradebook(text){
           const pnlPct=((t.price-b.price)/b.price)*100;
           const holdDays=Math.round((new Date(t.date)-new Date(b.date))/86400000);
           const capital=b.price*matched;
-          roundTrips.push({sym,buyPrice:b.price,sellPrice:t.price,qty:matched,pnlPct,holdDays,capital,buyDate:b.date,sellDate:t.date});
+          roundTrips.push({sym,buyPrice:b.price,sellPrice:t.price,qty:matched,pnlPct,holdDays,capital,buyDate:b.date,sellDate:t.date,buyTime:b.time,sellTime:t.time});
           b.qty-=matched;
           sellQty-=matched;
           if(b.qty<=0) buyQueue.shift();
