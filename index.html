@@ -3095,6 +3095,34 @@ function parseTradebook(text){
     lastBooked
   };
 
+  // Add netPnl (with charges) per trip and store full array for renderPerformance
+  const tripsData=roundTrips.map(r=>{
+    const bc=calcZerodhaCharges(r.buyPrice,r.qty,false);
+    const sc=calcZerodhaCharges(r.sellPrice,r.qty,true);
+    const netPnl=+((r.sellPrice-r.buyPrice)*r.qty-bc-sc).toFixed(0);
+    const netPnlPct=r.capital>0?+(netPnl/r.capital*100).toFixed(2):r.pnlPct;
+    return{...r,netPnl,netPnlPct};
+  });
+  stats.tripsData=tripsData;
+
+  // Build lastDate / lastDayRows / lastDayTotal for the latest-session panel
+  const lastDate=dates.length?dates[0]:null;
+  const lastDayBySym={};
+  tripsData.filter(r=>r.sellDate===lastDate).forEach(r=>{
+    if(!lastDayBySym[r.sym]) lastDayBySym[r.sym]={sym:r.sym,lots:0,buyVal:0,sellVal:0,qty:0,netPnl:0};
+    const e=lastDayBySym[r.sym];
+    e.lots++;e.buyVal+=r.buyPrice*r.qty;e.sellVal+=r.sellPrice*r.qty;e.qty+=r.qty;e.netPnl+=r.netPnl;
+  });
+  const lastDayRows=Object.values(lastDayBySym).map(e=>({
+    sym:e.sym,lots:e.lots,
+    buyPrice:e.qty>0?+(e.buyVal/e.qty).toFixed(2):0,
+    sellPrice:e.qty>0?+(e.sellVal/e.qty).toFixed(2):0,
+    netPnl:+e.netPnl.toFixed(0)
+  }));
+  stats.lastDate=lastDate;
+  stats.lastDayRows=lastDayRows;
+  stats.lastDayTotal=+lastDayRows.reduce((s,r)=>s+r.netPnl,0).toFixed(0);
+
   // Build last buy date per symbol (latest buy trade date, no FIFO needed)
   const lastBuyDateMap={};
   Object.entries(bySymbol).forEach(([sym,trades])=>{
