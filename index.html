@@ -230,7 +230,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 <div class="hdr">
  <div class="brand">
   <div class="brand-ico">🚀</div>
-  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div></div>
+  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div class="brand-tag" id="lastScanTag" style="display:none;color:var(--t3);font-size:10px"></div></div>
  </div>
  <div class="hdr-r" id="hdrR">
   <span id="fileTag"></span>
@@ -316,7 +316,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stocks in open Positions are hidden unless price has fallen at least this % below your avg buy (long). Shorts and zero-qty positions are always suppressed. Default 1%."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="1" max="30" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" title="Minimum 1D % gain to qualify as a Rocket for engine learning. Default 10%."></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
-   <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" disabled style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--blue);font-weight:700" title="GTT values for all holdings and positions">📋 GTT Values <span id="gttCount"></span></button>
+   <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--blue);font-weight:700" title="GTT values for all holdings and positions">📋 GTT Values <span id="gttCount"></span></button>
   </div>
   <div class="status-bar" id="statusBar"></div>
   <div id="tblOuter">
@@ -1564,11 +1564,9 @@ function renderStats(){
   if(REMOVED.fscore>0)pills.push(`<span class="info-pill pill-gray">🚫 ${REMOVED.fscore} zero/null F-Score removed</span>`);
   if(REMOVED.deliv>0)pills.push(`<span class="info-pill pill-cyan">🚫 ${REMOVED.deliv} low/no delivery removed</span>`);
   if(REMOVED.fade>0)pills.push(`<span class="info-pill pill-teal">🚫 ${REMOVED.fade} fading (peak retention &lt;50%) removed</span>`);
-  if(SUPPRESSED_HELD>0){
-    const dropEl=document.getElementById('fReDrop');
-    const dropV=dropEl?dropEl.value:'1';
-    pills.push(`<span class="info-pill pill-rose" title="These stocks are in your Positions. Longs: price hasn't fallen &ge;${dropV}% below avg buy. Shorts and zero-qty are always suppressed.">📌 ${SUPPRESSED_HELD} already held (no re-entry signal)</span>`);
-  }
+  const topUpCt=FILT.filter(s=>s._isTopUp).length;
+  if(topUpCt>0) pills.push(`<span class="info-pill pill-fire" title="These stocks are already in your portfolio. Shown as top-up candidates — review before adding more.">↑ ${topUpCt} top-up candidate${topUpCt>1?'s':''} in table</span>`);
+  if(SUPPRESSED_HELD>0) pills.push(`<span class="info-pill pill-rose" title="Short positions and zero-qty holdings are always hidden.">📌 ${SUPPRESSED_HELD} held (suppressed)</span>`);
   const bulkCt=ALL.filter(s=>s.flags.includes('BULK')).length;
   const blkCt=ALL.filter(s=>s.flags.includes('BLK')).length;
   if(bulkCt>0)pills.push(`<span class="info-pill pill-lime">📦 ${bulkCt} bulk buy deals today</span>`);
@@ -1603,12 +1601,16 @@ function renderStats(){
       }
     }
   }catch(e){}
+  if(TRADEBOOK_STATS?.adaptiveSL){
+    const _sl=TRADEBOOK_STATS.adaptiveSL.toFixed(1),_tgt=TRADEBOOK_STATS.adaptiveTGT.toFixed(1);
+    pills.push(`<span class="info-pill" style="background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:var(--t2)" title="Derived from tradebook: SL = median net loss%, TGT = 75th percentile net win%">📐 SL ${_sl}% · TGT ${_tgt}%</span>`);
+  }
   const infoBarEl=document.getElementById('infoBar');
   infoBarEl.innerHTML=pills.join('');
   void infoBarEl.offsetHeight;
 }
 
-function makeSortableTable(id, cols, rows, defaultSortKey, defaultDir=-1){
+function makeSortableTable(id, cols, rows, defaultSortKey, defaultDir=-1, rowStyleFn=null){
   const thStyle=(align)=>`padding:6px 10px;text-align:${align};cursor:pointer;user-select:none;white-space:nowrap`;
   const tdStyle=(align,extra='')=>`padding:7px 10px;text-align:${align};white-space:nowrap${extra?';'+extra:''}`;
   let sortKey=defaultSortKey, sortDir=defaultDir;
@@ -1621,14 +1623,14 @@ function makeSortableTable(id, cols, rows, defaultSortKey, defaultDir=-1){
     const thead=`<thead><tr style="color:var(--t3);border-bottom:1px solid var(--border)">${
       cols.map(c=>`<th data-key="${c.key}" style="${thStyle(c.align||'right')}">${c.label}${sortKey===c.key?(sortDir>0?' ▲':' ▼'):''}</th>`).join('')
     }</tr></thead>`;
-    const tbody=`<tbody>${sorted.map(row=>`<tr style="border-bottom:1px solid var(--border);color:var(--t1)">${
+    const tbody=`<tbody>${sorted.map(row=>{const _rs=rowStyleFn?rowStyleFn(row):'';return`<tr style="border-bottom:1px solid var(--border);color:var(--t1);${_rs}">${
       cols.map((c,i)=>{
         const v=row[c.key];
         const display=c.fmt?c.fmt(v,row):v;
         const color=c.clrFn?c.clrFn(v,row):'var(--t1)';
         return `<td style="${tdStyle(c.align||'right','color:'+color+(c.bold?';font-weight:700':''))}">${display}</td>`;
       }).join('')
-    }</tr>`).join('')}</tbody>`;
+    }</tr>`;}).join('')}</tbody>`;
     const tbl=document.getElementById(id);
     if(tbl){tbl.innerHTML=thead+tbody;attachSort(tbl);}
   }
@@ -1721,6 +1723,9 @@ function computePerfStats(trips){
   const sellHourBreakdown=Object.values(sellHourMap).map(h=>({...h,winRate:+(h.wins/h.trades*100).toFixed(0),avgPct:+meanArr(h.pnlPcts).toFixed(2)})).sort((a,b)=>a.hour-b.hour);
   const eligHours=hourBreakdown.filter(h=>h.trades>=3);
   const bestHourObj=eligHours.length?eligHours.reduce((b,h)=>h.avgPct>b.avgPct?h:b,eligHours[0]):null;
+  const dailyEntries=Object.entries(bookedByDate).map(([date,d])=>({date,pnl:+d.total.toFixed(0),count:d.count}));
+  const maxProfitDay=dailyEntries.length?dailyEntries.reduce((b,d)=>d.pnl>b.pnl?d:b,dailyEntries[0]):null;
+  const maxLossDay=dailyEntries.length?dailyEntries.reduce((b,d)=>d.pnl<b.pnl?d:b,dailyEntries[0]):null;
   return {
     roundTrips:trips.length, winners:wins.length, losers:losses.length,
     winRate, avgWinPct, avgLossPct, riskReward, kellyPct,
@@ -1728,6 +1733,7 @@ function computePerfStats(trips){
     largestWinRs, largestLossRs, maxDrawdown, maxLossStreak:maxStreak, maxWinStreak,
     pctProfitableDays, profitableDays, totalTradingDays,
     avgDailyPnl, avgHoldDays, avgCapital,
+    maxProfitDay, maxLossDay,
     symBreakdown, hourBreakdown, sellHourBreakdown,
     bestHour:bestHourObj?.hour??null, bestHourAvgPct:bestHourObj?+bestHourObj.avgPct.toFixed(2):null,
     bestHourWinRate:bestHourObj?.winRate??null, bestHourTrades:bestHourObj?.trades??null,
@@ -1802,6 +1808,8 @@ function renderPerformance(){
     {label:'Largest Loss',value:'-₹'+Math.abs(p.largestLossRs).toLocaleString('en-IN'),color:'var(--red)',sub:'Single lot, net'},
     {label:'Max Drawdown',value:p.maxDrawdown>0?'-₹'+p.maxDrawdown.toLocaleString('en-IN'):'—',color:'var(--red)',sub:'Peak-to-trough in period'},
     {label:'Max Loss Streak',value:p.maxLossStreak+' days',color:p.maxLossStreak>=5?'var(--red)':p.maxLossStreak>=3?'var(--amber)':'var(--green)',sub:'Consecutive losing days'},
+    {label:'Best Day',value:p.maxProfitDay?'+₹'+p.maxProfitDay.pnl.toLocaleString('en-IN'):'—',color:p.maxProfitDay&&p.maxProfitDay.pnl>0?'var(--green)':'var(--t3)',sub:p.maxProfitDay?p.maxProfitDay.date+' · '+p.maxProfitDay.count+' lots':'No data'},
+    {label:'Worst Day',value:p.maxLossDay?'−₹'+Math.abs(p.maxLossDay.pnl).toLocaleString('en-IN'):'—',color:p.maxLossDay&&p.maxLossDay.pnl<0?'var(--red)':'var(--t3)',sub:p.maxLossDay?p.maxLossDay.date+' · '+p.maxLossDay.count+' lots':'No data'},
   ];
   const kpiHtml=`<div class="kpi-grid">`+kpis.map(k=>`
     <div class="kpi-card">
@@ -1876,7 +1884,8 @@ function renderPerformance(){
     {key:'sEdge',label:'Sell Edge',align:'right',bold:true,fmt:v=>v!=null?v.toFixed(2):NA,clrFn:v=>v!=null?edgeClr(v):'var(--t3)'},
     {key:'action',label:'Signal',align:'left',fmt:(v,row)=>`<span style="color:${row.actionC};font-weight:700">${v}</span>`,clrFn:()=>''},
   ];
-  const tradeWindowTbl=makeSortableTable('tbl-trade-windows',tradeWindowCols,tradeWindowRows,'hour',1);
+  const {mins:_twMins}=istNow();const _twBucket=Math.floor(_twMins/30)*30;
+  const tradeWindowTbl=makeSortableTable('tbl-trade-windows',tradeWindowCols,tradeWindowRows,'hour',1,row=>row.hour===_twBucket?'background:rgba(99,102,241,.12);outline:1px solid rgba(99,102,241,.3);outline-offset:-1px':'');
   const hasTradeWindows=tradeWindowRows.length>0;
 
   // Latest Session — built ONLY from Orders.csv (sells) + Holdings.csv (delivery buy price).
@@ -1911,23 +1920,37 @@ function renderPerformance(){
       }
       const skipDp=isIntraday||dpCharged.has(sym);
       if(!isIntraday) dpCharged.add(sym);
-      const bc=calcZerodhaCharges(avgBuy,matchedQty,false,isIntraday,false);
-      const sc=calcZerodhaCharges(avgSell,matchedQty,true,isIntraday,skipDp);
-      const charges=+(bc+sc).toFixed(0);
+      const bcS=calcZerodhaChargesSplit(avgBuy,matchedQty,false,isIntraday,false);
+      const scS=calcZerodhaChargesSplit(avgSell,matchedQty,true,isIntraday,skipDp);
+      const _brok=+(bcS.brokerage+scS.brokerage).toFixed(2);
+      const _stt=+(bcS.stt+scS.stt).toFixed(2);
+      const _txn=+(bcS.txn+scS.txn).toFixed(2);
+      const _sebi=+(bcS.sebi+scS.sebi).toFixed(2);
+      const _gst=+(bcS.gst+scS.gst).toFixed(2);
+      const _stamp=+(bcS.stamp+scS.stamp).toFixed(2);
+      const _dp=+(bcS.dp+scS.dp).toFixed(2);
+      const charges=+(_brok+_stt+_txn+_sebi+_gst+_stamp+_dp).toFixed(0);
       const netPnl=+((avgSell-avgBuy)*matchedQty-charges).toFixed(0);
-      latestRows.push({sym,lots:sells.length,buyPrice:+avgBuy.toFixed(2),sellPrice:+avgSell.toFixed(2),charges,winRate:netPnl>0?100:0,netPnl,_sort:netPnl});
+      latestRows.push({sym,lots:sells.length,buyPrice:+avgBuy.toFixed(2),sellPrice:+avgSell.toFixed(2),_brok,_stt,_txn,_sebi,_gst,_stamp,_dp,charges,winRate:netPnl>0?100:0,netPnl,_sort:netPnl});
     });
     const latestDate=(ORDERS_TODAY[0].time||'').substring(0,10)||getSessionDate();
     const latestTotal=latestRows.reduce((s,r)=>s+r.netPnl,0);
     LATEST_BOOKED_TOTAL=latestTotal;
     LATEST_BOOKED_DATE=latestDate;
     LATEST_BOOKED_SOURCE='Orders.csv';
+    const _chFmt=v=>v>0?'−₹'+v.toFixed(2):'—';const _chClr=()=>'var(--red)';
     const latestCols=[
       {key:'sym',label:'Symbol',align:'left',fmt:v=>v,clrFn:()=>'var(--t1)',bold:true},
       {key:'lots',label:'Trades',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
       {key:'buyPrice',label:'Buy ₹',align:'right',fmt:v=>v.toLocaleString('en-IN'),clrFn:()=>'var(--t2)'},
       {key:'sellPrice',label:'Sell ₹',align:'right',fmt:v=>v.toLocaleString('en-IN'),clrFn:()=>'var(--t2)'},
-      {key:'charges',label:'Charges ₹',align:'right',fmt:v=>v!=null?'−₹'+Math.abs(v).toLocaleString('en-IN'):'—',clrFn:()=>'var(--red)'},
+      {key:'_brok',label:'Brokerage',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_stt',label:'STT/CTT',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_txn',label:'Txn',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_gst',label:'GST',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_sebi',label:'SEBI',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_stamp',label:'Stamp',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'_dp',label:'DP',align:'right',fmt:_chFmt,clrFn:_chClr},
       {key:'netPnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
     ];
     const latestTbl=makeSortableTable('perf-latest',latestCols,latestRows,'_sort',-1);
@@ -2577,7 +2600,7 @@ function renderTable(){
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
       <td class="rk" style="color:var(--t3)">${rk}</td>
       <td><span class="sc-m" style="color:${col}">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
-      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}</div></td>
+      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
       <td>${fDel(s.delivPct)}</td>
@@ -2597,7 +2620,9 @@ function renderTable(){
         cells+=`<td style="color:${c};font-weight:600;font-size:11px">${v>=1000?fV(v):v.toFixed(v>=100?0:v>=10?1:2)}</td>`;
       } else cells+=`<td style="font-size:10px;color:var(--t2)">${v}</td>`;
     }
-    return`<tr style="${isSelected?'background:rgba(251,191,36,.04);outline:1px solid rgba(251,191,36,.12);outline-offset:-1px':''}">${cells}</tr>`;
+    let _trStyle=s._isTopUp?'background:rgba(251,146,60,.05);outline:1px solid rgba(251,146,60,.18);outline-offset:-1px':'';
+    if(isSelected) _trStyle='background:rgba(251,191,36,.04);outline:1px solid rgba(251,191,36,.12);outline-offset:-1px';
+    return`<tr style="${_trStyle}">${cells}</tr>`;
   }).join('');
   renderPgn();
   updateSelectAll();
@@ -2675,30 +2700,28 @@ function applyFilters(){
   // Rationale: averaging down at a meaningfully lower price improves blended cost;
   // re-buying at or above entry just doubles risk without improving the position.
   SUPPRESSED_HELD=0;
-  if(POSITIONS && POSITIONS.length){
-    const reDrop=parseFloat(document.getElementById('fReDrop')?.value);
-    const dropPct=isFinite(reDrop)&&reDrop>=0?reDrop:1;
-    // Build map: symbol → avg price for ALL positions (long, short, zero qty)
-    // Build position map: symbol → {qty, avg}
+  // Reset top-up flag on all FILT items before re-evaluating
+  FILT.forEach(x=>{x._isTopUp=false;x._heldAvg=null;x._heldQty=null;});
+  {
+    // Build heldPos from HOLDINGS (settled) + POSITIONS (T+1 unsettled — overwrites)
     const heldPos={};
-    POSITIONS.forEach(p=>{
-      if(p && p.symbol) heldPos[p.symbol]={qty:p.qty||0,avg:p.avg!=null?p.avg:0};
+    if(HOLDINGS?.length) HOLDINGS.forEach(h=>{
+      if(h&&h.symbol&&h.qty>0){const avg=HOLD_COST_MAP[h.symbol]??h.avgCost??0;heldPos[h.symbol]={qty:h.qty,avg};}
+    });
+    if(POSITIONS?.length) POSITIONS.forEach(p=>{
+      if(p&&p.symbol) heldPos[p.symbol]={qty:p.qty||0,avg:p.avg!=null?p.avg:0};
     });
     if(Object.keys(heldPos).length){
       FILT=FILT.filter(x=>{
         const pos=heldPos[x.symbol];
-        if(!pos) return true; // not in positions → keep
+        if(!pos) return true;
         const {qty,avg}=pos;
-        const cur=x.price;
-        // Short (qty<0): always suppress — no BTST buy makes sense on a shorted stock
-        if(qty<0){SUPPRESSED_HELD++;return false;}
-        // Zero qty (avg=0, closed intraday): always suppress — no re-entry same day
-        if(!avg||cur==null||cur<=0){SUPPRESSED_HELD++;return false;}
-        // Long (qty>0): suppress unless price has fallen ≥ dropPct% below avg buy
-        const dropFromAvg=((avg-cur)/avg)*100; // positive = price fallen below avg
-        if(dropFromAvg>=dropPct) return true; // significant avg-down opportunity
-        SUPPRESSED_HELD++;
-        return false;
+        if(qty<=0){SUPPRESSED_HELD++;return false;} // short or zero-qty: suppress
+        // Positive holding — show as top-up candidate, not a fresh buy
+        x._isTopUp=true;
+        x._heldAvg=avg||null;
+        x._heldQty=qty;
+        return true;
       });
     }
   }
@@ -3169,6 +3192,19 @@ function calcZerodhaCharges(price, qty, isSell, isIntraday, skipDp){
   return brokerage+stt+txn+sebi+gst+stamp+dp;
 }
 
+// Returns per-component breakdown (same rates as calcZerodhaCharges).
+function calcZerodhaChargesSplit(price, qty, isSell, isIntraday, skipDp){
+  const posVal=price*Math.abs(qty);
+  const brokerage=isIntraday?Math.min(0.0003*posVal,20):0;
+  const stt=isIntraday?(isSell?0.00025*posVal:0):0.001*posVal;
+  const txn=0.0000307*posVal;
+  const sebi=0.000001*posVal;
+  const gst=0.18*(brokerage+sebi+txn);
+  const stamp=isSell?0:(isIntraday?0.00003:0.00015)*posVal;
+  const dp=(isSell&&!isIntraday&&!skipDp)?15.34:0;
+  return {brokerage,stt,txn,sebi,gst,stamp,dp};
+}
+
 function getPosition(symbol){
   // Return position obj with qty and avg from POSITIONS (positive qty only)
   if(!POSITIONS||!POSITIONS.length) return null;
@@ -3194,6 +3230,9 @@ function getSellAvgPrice(symbol){
 }
 
 function showGttPopup(){
+  try{_showGttPopupInner();}catch(e){console.error('showGttPopup error:',e);showToast('GTT popup error: '+e.message,5000,true);}
+}
+function _showGttPopupInner(){
   const tick=v=>Math.round(v/0.05)*0.05;
   const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
   const adaptiveTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
@@ -3491,6 +3530,9 @@ async function processFiles(files){
     document.getElementById('hdrR').style.display='flex';
     document.getElementById('noDataBanner').style.display='none';
     document.getElementById('fileTag').textContent=tvFile.name+' · '+raw.length+' stocks';
+    const _nowIst=new Date(Date.now()+5.5*3600000);
+    const _ts=_nowIst.toISOString().replace('T',' ').slice(0,16)+' IST';
+    const _stEl=document.getElementById('lastScanTag');if(_stEl){_stEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}
     // Auto-select all stocks by default on fresh upload
     SELECTED=new Set(ALL.map(s=>s.symbol));
     renderPerformance();renderStats();renderMethodology();loadFilterState();setAutoVolume();applyFilters();updateTabCounts();
@@ -3604,6 +3646,7 @@ async function initApp(){
         FILT=[...ALL];
         SELECTED=new Set(ALL.map(s=>s.symbol));
         if(saved.fileTag){const ft=document.getElementById('fileTag');if(ft)ft.textContent=saved.fileTag;}
+        if(saved.ts){const _ist=new Date(saved.ts+5.5*3600000);const _ts=_ist.toISOString().replace('T',' ').slice(0,16)+' IST';const _stEl=document.getElementById('lastScanTag');if(_stEl){_stEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}}
         console.log('INIT: restored',ALL.length,'stocks from file');
       }
     }catch(e){console.error('INIT step2 data failed:',e);}
