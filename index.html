@@ -313,7 +313,8 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl">Min Holders</span><input type="number" id="fSh" placeholder="e.g. 10000" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Capital ₹</span><input type="number" id="fCapital" placeholder="e.g. 100000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stocks in open Positions are hidden unless price has fallen at least this % below your avg buy (long). Shorts and zero-qty positions are always suppressed. Default 1%."></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Top-up %</span><input type="number" id="fTopupAlloc" value="50" placeholder="50" min="10" max="100" step="10" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Allocation % for top-up candidates vs a fresh buy. 50 means top-up gets half the normal score-weighted allocation. Default 50%."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="1" max="30" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" title="Minimum 1D % gain to qualify as a Rocket for engine learning. Default 10%."></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
    <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--blue);font-weight:700" title="GTT values for all holdings and positions">📋 GTT Values <span id="gttCount"></span></button>
@@ -1951,6 +1952,7 @@ function renderPerformance(){
       {key:'_sebi',label:'SEBI',align:'right',fmt:_chFmt,clrFn:_chClr},
       {key:'_stamp',label:'Stamp',align:'right',fmt:_chFmt,clrFn:_chClr},
       {key:'_dp',label:'DP',align:'right',fmt:_chFmt,clrFn:_chClr},
+      {key:'charges',label:'Total Charges',align:'right',bold:true,fmt:v=>v>0?'−₹'+v.toLocaleString('en-IN'):'—',clrFn:()=>'var(--red)'},
       {key:'netPnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
     ];
     const latestTbl=makeSortableTable('perf-latest',latestCols,latestRows,'_sort',-1);
@@ -1962,7 +1964,33 @@ function renderPerformance(){
       </div>
       ${latestRows.length?`<div style="overflow-x:auto">${latestTbl.getHtml()}</div>`:headerNote}
     </div>`;
-    setTimeout(()=>{latestTbl.render();},0);
+    setTimeout(()=>{
+      latestTbl.render();
+      const _lt=document.getElementById('perf-latest');
+      if(_lt&&latestRows.length>1){
+        const _sum=(k)=>latestRows.reduce((s,r)=>s+(r[k]||0),0);
+        const _c=v=>v>0?'var(--red)':'var(--t2)';
+        const _p=v=>fmtRs(v);
+        const td=(v,extra='')=>`<td style="padding:7px 10px;text-align:right;white-space:nowrap;font-weight:700;${extra}">${v}</td>`;
+        const tfoot=document.createElement('tfoot');
+        tfoot.innerHTML=`<tr style="border-top:2px solid var(--border-hi);background:rgba(148,163,184,.05)">
+          <td style="padding:7px 10px;font-weight:700;color:var(--t2);white-space:nowrap">Total (${latestRows.length})</td>
+          ${td('—','color:var(--t3)')}
+          ${td('—','color:var(--t3)')}
+          ${td('—','color:var(--t3)')}
+          ${td(_sum('_brok')>0?'−₹'+_sum('_brok').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_stt')>0?'−₹'+_sum('_stt').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_txn')>0?'−₹'+_sum('_txn').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_gst')>0?'−₹'+_sum('_gst').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_sebi')>0?'−₹'+_sum('_sebi').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_stamp')>0?'−₹'+_sum('_stamp').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('_dp')>0?'−₹'+_sum('_dp').toFixed(2):'—','color:var(--red)')}
+          ${td(_sum('charges')>0?'−₹'+Math.round(_sum('charges')).toLocaleString('en-IN'):'—','color:var(--red)')}
+          ${td(_p(Math.round(latestTotal)),'color:'+(latestTotal>=0?'var(--green)':'var(--red)'))}
+        </tr>`;
+        _lt.appendChild(tfoot);
+      }
+    },0);
   } else {
     todayHtml=`<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;padding:14px 16px;color:var(--t3);font-size:12px">
       <span style="font-weight:600;color:var(--t2)">Latest Session</span> — Upload <strong>Orders.csv</strong> to see today's P&L. Delivery buy prices come from <strong>Holdings.csv</strong>.
@@ -2421,15 +2449,18 @@ function computeAlloc(capital, selList){
   }
 
   // ── Pass 1: Score-weighted initial allocation ──
-  const totalScore = selList.reduce((s,x)=>s+(x.rocketScore||0),0)||1;
+  const _topupPctEl=document.getElementById('fTopupAlloc');
+  const _topupMult=Math.min(1,Math.max(0.1,((_topupPctEl?parseFloat(_topupPctEl.value)||50:50)/100)));
+  const _effScore=s=>s._isTopUp?(s.rocketScore||0)*_topupMult:(s.rocketScore||0);
+  const totalScore = selList.reduce((s,x)=>s+_effScore(x),0)||1;
   const allocMap = {};
-  // Sort a working copy by score descending — residual top-up prioritises conviction
-  const sortedSel=[...selList].sort((a,b)=>(b.rocketScore||0)-(a.rocketScore||0));
+  // Sort a working copy by effective score descending
+  const sortedSel=[...selList].sort((a,b)=>_effScore(b)-_effScore(a));
 
   sortedSel.forEach(s => {
     const buyP=getBuyPrice(s);
     if(!buyP||buyP<=0) return;
-    const weight = s.rocketScore / totalScore;
+    const weight = _effScore(s) / totalScore;
     const allotted = Math.min(capital * weight, cap);
     const qty = Math.floor(allotted / buyP);
     if(qty <= 0) return;
@@ -2700,9 +2731,10 @@ function applyFilters(){
   // Rationale: averaging down at a meaningfully lower price improves blended cost;
   // re-buying at or above entry just doubles risk without improving the position.
   SUPPRESSED_HELD=0;
-  // Reset top-up flag on all FILT items before re-evaluating
   FILT.forEach(x=>{x._isTopUp=false;x._heldAvg=null;x._heldQty=null;});
   {
+    const reDrop=parseFloat(document.getElementById('fReDrop')?.value);
+    const dropPct=isFinite(reDrop)&&reDrop>=0?reDrop:1;
     // Build heldPos from HOLDINGS (settled) + POSITIONS (T+1 unsettled — overwrites)
     const heldPos={};
     if(HOLDINGS?.length) HOLDINGS.forEach(h=>{
@@ -2716,12 +2748,16 @@ function applyFilters(){
         const pos=heldPos[x.symbol];
         if(!pos) return true;
         const {qty,avg}=pos;
-        if(qty<=0){SUPPRESSED_HELD++;return false;} // short or zero-qty: suppress
-        // Positive holding — show as top-up candidate, not a fresh buy
-        x._isTopUp=true;
-        x._heldAvg=avg||null;
-        x._heldQty=qty;
-        return true;
+        const cur=x.price;
+        if(qty<=0){SUPPRESSED_HELD++;return false;} // short or zero-qty: always suppress
+        if(!avg||cur==null||cur<=0){SUPPRESSED_HELD++;return false;} // no avg data
+        const dropFromAvg=((avg-cur)/avg)*100;
+        if(dropFromAvg>=dropPct){
+          // Eligible avg-down: show as top-up candidate with reduced allocation
+          x._isTopUp=true; x._heldAvg=avg; x._heldQty=qty; x._topUpDrop=+dropFromAvg.toFixed(2);
+          return true;
+        }
+        SUPPRESSED_HELD++; return false; // not dropped enough: suppress
       });
     }
   }
@@ -2794,6 +2830,7 @@ function renderStatusBar(){
 function clearFilters(){
   ['fMinScore','fFscore','fSh','fMin1D','fMax1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
+  const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='70';
   const rktEl=document.getElementById('fRocketPct');if(rktEl)rktEl.value='10';
   VOL_AUTO=true;setAutoVolume();
@@ -3052,6 +3089,18 @@ function parseTradebook(text){
     bySymbol[sym].push({type,qty:Math.abs(qty),price,date,time});
   });
 
+  // Consolidate multiple fills of same stock/day/type into one entry (qty-weighted avg price).
+  // This matches Zerodha's per-day P&L approach and prevents fill fragmentation.
+  Object.keys(bySymbol).forEach(sym=>{
+    const grps={};const order=[];
+    bySymbol[sym].forEach(t=>{
+      const k=t.type+'|'+t.date;
+      if(!grps[k]){grps[k]={type:t.type,qty:0,totalVal:0,date:t.date,time:t.time};order.push(grps[k]);}
+      grps[k].qty+=t.qty; grps[k].totalVal+=t.price*t.qty;
+    });
+    bySymbol[sym]=order.map(g=>({...g,price:g.qty?g.totalVal/g.qty:0}));
+  });
+
   // FIFO matching per symbol — only closed round trips
   const roundTrips=[];
   Object.entries(bySymbol).forEach(([sym,trades])=>{
@@ -3234,6 +3283,9 @@ function showGttPopup(){
 }
 function _showGttPopupInner(){
   const tick=v=>Math.round(v/0.05)*0.05;
+  const clr=v=>v>0?'var(--green)':v<0?'var(--red)':'var(--t2)';
+  const fmtRs=v=>v!=null?'₹'+Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
+  const fmtPct=v=>v!=null?(v>=0?'+':'')+Number(v).toFixed(2)+'%':'—';
   const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
   const adaptiveTGT=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7;
 
@@ -3762,6 +3814,7 @@ function saveFilterState(){
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
     rocketPct:document.getElementById('fRocketPct')?.value||'10',
     reDrop:document.getElementById('fReDrop')?.value||'1',
+    topupAlloc:document.getElementById('fTopupAlloc')?.value||'50',
     sortCol:SCOL,
     sortDir:SDIR,
   };
@@ -3782,6 +3835,7 @@ function loadFilterState(){
     if(state.maxAlloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.maxAlloc;}
     if(state.rocketPct){const el=document.getElementById('fRocketPct');if(el)el.value=state.rocketPct;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
+    if(state.topupAlloc!=null){const el=document.getElementById('fTopupAlloc');if(el)el.value=state.topupAlloc;}
     if(state.volMult){const el=document.getElementById('fVolMult');if(el)el.value=state.volMult;}
     if(state.fvol){
       const el=document.getElementById('fVol');if(el)el.value=state.fvol;
