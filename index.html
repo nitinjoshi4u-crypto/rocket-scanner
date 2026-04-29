@@ -243,6 +243,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
   <button class="btn" onclick="exportBrain()" title="Export Brain — download a copy of the brain file" style="font-size:11px">💾 Export</button>
   <button class="btn" onclick="document.getElementById('brainIn').click()" title="Import Brain — restore from a previously exported file" style="font-size:11px">🧠 Import</button>
   <input type="file" id="brainIn" accept=".json" style="display:none" onchange="importBrain(event)">
+  <button class="btn" onclick="resetEngine(this)" title="Reset Engine — wipe correlations and learning data only. Keeps tradebook, holdings, orders, custom rules." style="font-size:11px;border-color:rgba(251,191,36,.3);color:var(--amber)">🧹 Engine</button>
   <button class="btn" onclick="resetBrain(this)" title="Reset — wipe all accumulated correlations and start fresh" style="font-size:11px;border-color:rgba(239,68,68,.3);color:var(--red)">🗑 Reset</button>
   <div style="position:relative;display:flex;align-items:center">
     <button class="btn btn-fire" id="loadFilesBtn" onclick="showUploadScreen()">Load Files</button>
@@ -3144,6 +3145,28 @@ function showBrainPrompt(){
   document.body.appendChild(toast);
   // Auto-dismiss after 15 seconds
   setTimeout(()=>{const t=document.getElementById('brainToast');if(t)t.remove();},15000);
+}
+
+function resetEngine(btn){
+  if(!btn._stage){
+    btn._stage=1;
+    btn.innerHTML='⚠ Wipe correlations?';
+    btn.style.background='rgba(251,191,36,.12)';
+    setTimeout(()=>{if(btn._stage===1){btn._stage=0;btn.innerHTML='🧹 Reset Engine';btn.style.background='';}},4000);
+    return;
+  }
+  const s=ACC_CORR?.sessions||0;
+  const rs={bull:ACC_CORR_BULL?.sessions||0,bear:ACC_CORR_BEAR?.sessions||0,neutral:ACC_CORR_NEUT?.sessions||0};
+  // Wipe engine learning keys — keep tradebook, holdings, orders, positions, missed opp, surv rules
+  const engineKeys=[CORR_STORE,CORR_BULL_STORE,CORR_BEAR_STORE,CORR_NEUT_STORE,
+    SNAP_KEY,SNAP_PREV_KEY,METH_STORE,REGIME_CAL_STORE,SURV_CORR_STORE,REC_COUNT_STORE];
+  engineKeys.forEach(k=>FS.set(k,null));
+  ACC_CORR=null;ACC_CORR_BULL=null;ACC_CORR_BEAR=null;ACC_CORR_NEUT=null;
+  ALL=[];FILT=[];ENGINE_DATA={};PREV_SNAP={};SURV_CORR_ACC={};
+  btn._stage=0;
+  btn.innerHTML='🧹 Reset Engine';btn.style.background='';
+  showToast(`<strong>Engine reset.</strong> Wiped ${s} sessions (🐂${rs.bull} 🐻${rs.bear} ➡${rs.neutral}). Tradebook, holdings, and rules preserved. Upload fresh TV CSV to restart learning.`,6000);
+  setTimeout(()=>location.reload(),2500);
 }
 
 function resetBrain(btn){
