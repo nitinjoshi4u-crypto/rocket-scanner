@@ -916,7 +916,7 @@ function getHardFilterRowsFromEngine(E){
       ruleKey:row.key,
     })),
     {key:'low_liquidity',label:'Low Liquidity',criteria:'Shareholders < 500 OR Volume < 5,000',removed:rm.liq||0,active:true,kind:'core'},
-    {key:'zero_fscore',label:'Zero F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,active:true,kind:'core'},
+    {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,active:true,kind:'core'},
     {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,active:true,kind:'core'},
     {key:'fading_peak_retention',label:'Fading (Peak Retention)',criteria:'Peak retention < 50% when day range > 1%',removed:rm.fade||0,active:true,kind:'core'},
   ];
