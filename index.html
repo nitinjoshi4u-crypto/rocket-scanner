@@ -2552,7 +2552,7 @@ function renderMethodology(){
 function getCols(){
   const fixed=[
     {key:'chk',label:'',s:0},{key:'rank',label:'#',s:0},
-    {key:'rocketScore',label:'Score',s:1},{key:'seen',label:'Seen',s:1},{key:'symbol',label:'Symbol',s:1},
+    {key:'rocketScore',label:'Score',s:1},{key:'symbol',label:'Symbol',s:1},
     {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'delivPct',label:'Deliv%',s:1},
     {key:'alloc',label:'Alloc ₹',s:0},{key:'volume',label:'Volume',s:1},
   ];
@@ -2831,8 +2831,7 @@ function renderTable(){
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
       <td class="rk" style="color:var(--t3)">${rk}</td>
       <td><span class="sc-m" style="color:${col}">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
-      ${(()=>{const sv=s.seen||0;const sc=sv>=3?'var(--green)':sv>=2?'var(--amber)':'var(--t3)';return`<td style="text-align:center;font-weight:${sv>=2?700:400};color:${sc};font-size:11px;font-family:'DM Mono',monospace" title="Times ranked today">${sv||'—'}</td>`;})()}
-      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
+      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';const sc=sv>=3?'var(--green)':sv>=2?'var(--amber)':'var(--t3)';return`<span style="font-size:9px;color:${sc};font-weight:700;margin-left:4px;font-family:'DM Mono',monospace;vertical-align:super" title="Seen ${sv}× today">${sv}×</span>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
       <td>${fDel(s.delivPct)}</td>
