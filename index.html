@@ -916,7 +916,7 @@ function getHardFilterRowsFromEngine(E){
       ruleKey:row.key,
     })),
     {key:'low_liquidity',label:'Low Liquidity',criteria:'Shareholders < 500 OR Volume < 5,000',removed:rm.liq||0,active:true,kind:'core'},
-    {key:'zero_fscore',label:'Zero F-Score',criteria:'Piotroski F-Score = 0 or null',removed:rm.fscore||0,active:true,kind:'core'},
+    {key:'zero_fscore',label:'Zero F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,active:true,kind:'core'},
     {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,active:true,kind:'core'},
     {key:'fading_peak_retention',label:'Fading (Peak Retention)',criteria:'Peak retention < 50% when day range > 1%',removed:rm.fade||0,active:true,kind:'core'},
   ];
@@ -1231,9 +1231,9 @@ function runEngine(raw, sessionTag){
     const sh=K.shareholders?d[K.shareholders]:null;
     const vol=K.volume?d[K.volume]:null;
     if((sh!==null&&sh<500)||(vol!==null&&vol<5000)){REMOVED.liq++;return false;}
-    // Piotroski — zero means no fundamental data available
+    // Piotroski — must be > 3 (higher = better fundamentals)
     const pio=K.piotroski?d[K.piotroski]:null;
-    if(pio===null||pio===0){REMOVED.fscore++;return false;}
+    if(pio===null||pio<=3){REMOVED.fscore++;return false;}
     // Delivery — null or <30% means speculative, no rockets have ever come from below 30%
     const del=d.delivery_pct;
     if(del===null||del<30){REMOVED.deliv++;return false;}
@@ -2589,7 +2589,7 @@ function renderMethodology(){
       <div class="m-card"><h4>🎯 Quality-Adjusted Target</h4><p>Stocks that moved <strong>≥${E.rocketThreshold||10}% up</strong>, plus yesterday's rockets that <strong>held today</strong> (didn't collapse beyond hold threshold). Yesterday's rockets that collapsed get reclassified as 0 — the engine <em>unlearns</em> features that predicted fragile spikes. Over sessions, this trains the engine to recommend <strong>durable</strong> moves, not one-day spikes.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Regime-Conditional Learning</h4><p>Market classified as <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% breadth). Bull ≥55%, Bear &lt;35%. Each regime maintains <strong>separate correlation accumulators</strong> — bull sessions learn breakout patterns, bear sessions learn resilience patterns. ${E.learningRegime&&E.learningRegime!==E.regime?'Latest lagged outcome trained the <strong>'+E.learningRegime.toUpperCase()+'</strong> bucket because that was the prior scan regime. ':''}${E.useRegimeCorr?'Using <strong>regime-specific</strong> correlations.':'Regime history still warming up (need ≥2 sessions in this regime).'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s data and fed into mRMR. Stocks in strong sectors score higher in bull markets; stocks outperforming weak sectors score higher in bear markets.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed stocks (exact NSE REG1 column matching — see Hard Filters table below), low liquidity (shareholders &lt;500 or volume &lt;5K), zero/null Piotroski F-Score, delivery &lt;30%, and <strong>peak retention &lt;50%</strong> (fading; only when day range &gt;1%). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)+(REMOVED.fade||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed stocks (exact NSE REG1 column matching — see Hard Filters table below), low liquidity (shareholders &lt;500 or volume &lt;5K), Piotroski F-Score ≤ 3, delivery &lt;30%, and <strong>peak retention &lt;50%</strong> (fading; only when day range &gt;1%). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)+(REMOVED.fade||0)} stocks.</p></div>
     </div>
 
     <p style="color:var(--t3);font-style:italic;margin-top:4px">⚠ Quantitative screening only. Not financial advice. Past momentum ≠ future returns.</p>
