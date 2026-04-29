@@ -2237,7 +2237,7 @@ function buildHardFilterMethodologyHTML(E){
     <h3 id="meth-filters" style="margin-top:28px">Hard Filters <span style="font-size:12px;color:var(--t3);font-weight:400">(${totalRemoved} removals in latest saved run)</span></h3>
     <p style="color:var(--t3);font-size:12px;margin-bottom:10px">Each surveillance row is an exact REG1 column. Manual rows are persisted in your brain and apply whenever that column is flagged.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <input id="survRuleInput" type="text" placeholder="Exact REG1 column name (e.g. GSM)" list="survRuleDatalist" onkeydown="if(event.key==='Enter'){event.preventDefault();addSurvRule();}" style="flex:1;min-width:280px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-size:12px;outline:none">
+      <input id="survRuleInput" type="text" placeholder="${SURV_HEADERS.length?'Type to search REG1 columns…':'Load NSE ZIP to enable suggestions'}" list="survRuleDatalist" onkeydown="if(event.key==='Enter'){event.preventDefault();addSurvRule();}" style="flex:1;min-width:280px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-size:12px;outline:none">
       <datalist id="survRuleDatalist">${datalistHtml}</datalist>
       <button class="btn" onclick="addSurvRule()" style="font-weight:700">+ Add Hard Filter</button>
     </div>
@@ -2301,12 +2301,14 @@ function buildSurvCorrHTML(){
   const allAcc=Object.values(SURV_CORR_ACC).filter(r=>r.sessions>0);
   // Show placeholder only when nothing accumulated yet
   if(!allAcc.length){
-    const needs=[];
-    if(!HOLDINGS?.length) needs.push('<strong>Holdings.csv</strong>');
-    if(!Object.keys(SURV_ALL_HITS).length) needs.push('<strong>NSE ZIP</strong> (surveillance)');
-    return `<div style="padding:12px 14px;background:rgba(148,163,184,.06);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--t3);margin-top:12px">
-      ${needs.length?`Load ${needs.join(' + ')} to start accumulating surveillance P&amp;L correlation.`:'No correlation data yet — accumulator will update next time Holdings.csv + NSE ZIP are both loaded.'}
-    </div>`;
+    const hasHoldings=HOLDINGS?.length>0;
+    const hasSurv=Object.keys(SURV_ALL_HITS).length>0;
+    let msg;
+    if(!hasHoldings&&!hasSurv) msg='Load <strong>Holdings.csv</strong> + <strong>NSE ZIP</strong> to start accumulating surveillance P&amp;L correlation.';
+    else if(!hasHoldings) msg='Load <strong>Holdings.csv</strong> to start accumulating surveillance P&amp;L correlation.';
+    else if(!hasSurv) msg='Load <strong>NSE ZIP</strong> this session to start accumulating — REG1 surveillance file needed.';
+    else msg='No held stocks flagged in surveillance this session — accumulator activates when a held position appears on the REG1 list.';
+    return `<div style="padding:12px 14px;background:rgba(148,163,184,.06);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--t3);margin-top:12px">${msg}</div>`;
   }
   // Show staleness note if we can't accumulate this session
   const canAccumulate=HOLDINGS?.length>0&&Object.keys(SURV_ALL_HITS).length>0;
@@ -3818,56 +3820,56 @@ async function processFiles(files){
     SELECTED=new Set(ALL.map(s=>s.symbol));
     computeMissedOpp();
     renderPerformance();renderStats();renderMethodology();loadFilterState();setAutoVolume();applyFilters();updateTabCounts();
-    // Process holdings if uploaded
-    if(holdFile){
-      setMsg('Processing holdings...');
-      document.getElementById('slot-hold').textContent='🛡 '+holdFile.name;
-      document.getElementById('slot-hold').classList.add('ok');
-      const holdText=await holdFile.text();
-      HOLDINGS=parseHoldings(holdText);
-      try{FS.set(HOLD_STORE,{holdings:HOLDINGS,costMap:HOLD_COST_MAP});}catch(e){}
-    }
-    // Process positions if uploaded
-    if(posFile){
-      setMsg('Processing positions...');
-      document.getElementById('slot-pos').textContent='📊 '+posFile.name;
-      document.getElementById('slot-pos').classList.add('ok');
-      const posText=await posFile.text();
-      const posHash=(function(t){let h=0;for(let i=0;i<t.length;i++){h=((h<<5)-h)+t.charCodeAt(i);h|=0;}return h;})(posText);
-      const today=getSessionDate();
-      POSITIONS=parsePositions(posText);
-      try{FS.set(POS_STORE,{positions:POSITIONS,hash:posHash,sessionDate:today});}catch(e){}
-    }
-    // Process orders if uploaded
-    if(ordFile){
-      setMsg('Processing orders...');
-      const ordSlot=document.getElementById('slot-ord');
-      if(ordSlot){ordSlot.textContent='🧾 '+ordFile.name;ordSlot.classList.add('ok');}
-      const ordText=await ordFile.text();
-      ORDERS_TODAY=parseOrders(ordText);
-      try{FS.set(ORDERS_STORE,ORDERS_TODAY);}catch(e){}
-      computeMissedOpp();
-    }
-    // Re-render stats bar so the Booked Today card reflects fresh holdings/positions/orders
-    // renderPerformance must run first to update LATEST_BOOKED_TOTAL
-    if(holdFile||posFile||ordFile){renderPerformance();renderStats();}
-    // Process tradebook if uploaded
-    if(tbFile){
-      setMsg('Analyzing tradebook...');
-      document.getElementById('slot-tb').textContent='📒 '+tbFile.name;
-      document.getElementById('slot-tb').classList.add('ok');
-      const tbText=await tbFile.text();
-      TRADEBOOK_STATS=parseTradebook(tbText);
-      if(TRADEBOOK_STATS) try{FS.set(TRADEBOOK_STORE,TRADEBOOK_STATS);}catch(e){}
-      if(TRADEBOOK_STATS){renderPerformance();renderStats();}
-    }
     showBrainPrompt();
     } // end isFullScannerCSV else
-  } else {
+  } else if(!holdFile&&!posFile&&!ordFile&&!tbFile){
     document.getElementById('ldSt').classList.remove('on');
     document.getElementById('uplSec').style.display='flex';
     if(!nseZip) showToast('TradingView CSV not found. Drop ALL NSE.csv alongside the NSE ZIP.',4000,true);
   }
+
+  // Holdings / Positions / Orders / Tradebook — processed regardless of TV CSV
+  // These can be uploaded alone mid-session without re-running the engine
+  if(holdFile){
+    setMsg('Processing holdings...');
+    document.getElementById('slot-hold').textContent='🛡 '+holdFile.name;
+    document.getElementById('slot-hold').classList.add('ok');
+    const holdText=await holdFile.text();
+    HOLDINGS=parseHoldings(holdText);
+    try{FS.set(HOLD_STORE,{holdings:HOLDINGS,costMap:HOLD_COST_MAP});}catch(e){}
+  }
+  if(posFile){
+    setMsg('Processing positions...');
+    document.getElementById('slot-pos').textContent='📊 '+posFile.name;
+    document.getElementById('slot-pos').classList.add('ok');
+    const posText=await posFile.text();
+    const posHash=(function(t){let h=0;for(let i=0;i<t.length;i++){h=((h<<5)-h)+t.charCodeAt(i);h|=0;}return h;})(posText);
+    const today=getSessionDate();
+    POSITIONS=parsePositions(posText);
+    try{FS.set(POS_STORE,{positions:POSITIONS,hash:posHash,sessionDate:today});}catch(e){}
+  }
+  if(ordFile){
+    setMsg('Processing orders...');
+    const ordSlot=document.getElementById('slot-ord');
+    if(ordSlot){ordSlot.textContent='🧾 '+ordFile.name;ordSlot.classList.add('ok');}
+    const ordText=await ordFile.text();
+    ORDERS_TODAY=parseOrders(ordText);
+    try{FS.set(ORDERS_STORE,ORDERS_TODAY);}catch(e){}
+    computeMissedOpp();
+  }
+  if(holdFile||posFile||ordFile){
+    if(ALL.length){renderPerformance();renderStats();}
+  }
+  if(tbFile){
+    setMsg('Analyzing tradebook...');
+    document.getElementById('slot-tb').textContent='📒 '+tbFile.name;
+    document.getElementById('slot-tb').classList.add('ok');
+    const tbText=await tbFile.text();
+    TRADEBOOK_STATS=parseTradebook(tbText);
+    if(TRADEBOOK_STATS) try{FS.set(TRADEBOOK_STORE,TRADEBOOK_STATS);}catch(e){}
+    if(TRADEBOOK_STATS&&ALL.length){renderPerformance();renderStats();}
+  }
+  setMsg('');
 }
 
 document.getElementById('fIn').addEventListener('change',e=>{if(e.target.files.length)processFiles(Array.from(e.target.files));});
