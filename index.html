@@ -341,14 +341,10 @@ let SCORE_MAP={}; // {symbol → rocketScore} for ALL parsed stocks including fi
 let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
 let PERF_TRADE_WINDOWS=[]; // cached trade window rows from renderPerformance — used by current-window pill
-let LATEST_BOOKED_TOTAL=null; // cached booked today total from renderPerformance — used by renderStats card
-let LATEST_BOOKED_DATE=''; // date string of latest session (set alongside LATEST_BOOKED_TOTAL)
-let LATEST_BOOKED_SOURCE=''; // 'Orders.csv' | 'Tradebook' (set alongside LATEST_BOOKED_TOTAL)
 let ENGINE_DATA={};
 let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0};
 let SUPPRESSED_HELD=0; // count of stocks hidden because already held in POSITIONS
 let SELECTED=new Set(); // symbols selected for basket — recomputed from FILT each applyFilters
-let NSE_LOADED=false;
 let PREV_SNAP={}; // symbol→{featureKey:value,...} full feature vector from last upload
 const SNAP_KEY='rs_snapshot';
 const SNAP_PREV_KEY='rs_snapshot_prev';
@@ -367,7 +363,6 @@ const TRADEBOOK_STORE='rs_tradebook';
 const SURV_RULE_STORE='rs_surv_rules';
 const SURV_CORR_STORE='rs_surv_corr';
 const MISSED_OPP_STORE='rs_missed_opp_v2';
-const OPEN_BUY_DATE_STORE='rs_open_buy_dates';
 const REC_COUNT_STORE='rs_rec_count';
 let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct, winRate, avgHoldDays, p25Loss, p75Win, adaptiveSL, adaptiveTGT, minExitPct, roundTrips}
 let LAST_BUY_DATE_MAP={}; // {symbol → latest buy date string} — populated on tradebook parse
@@ -810,6 +805,9 @@ function parseCSV(text){
 function num(v){if(v===null||v===undefined||v==='')return null;const x=parseFloat(String(v).replace(/,/g,''));return isNaN(x)?null:x;}
 function normSym(s){return String(s||'').trim().replace(/^[A-Z]+:/,'').toUpperCase();}
 function escHtml(s){return String(s??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
+function findHeader(hdrs,patterns){return hdrs.find(h=>patterns.some(p=>p.test(h.trim())))||null;}
+function meanArr(arr){return arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:0;}
+function tickPrice(v){return Math.round(v/0.05)*0.05;}
 function survRuleKey(label){return String(label||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function isSurvFlag(v){
   const s=String(v||'').trim().toLowerCase();
@@ -1557,19 +1555,89 @@ function getHoldingAvgCost(symbol){
   return hrow?.avgCost??null;
 }
 
+function getLatestOrderSession(){
+  if(!ORDERS_TODAY?.length) return null;
+  const dates=ORDERS_TODAY.map(o=>(o.time||'').substring(0,10)).filter(Boolean).sort();
+  const date=dates[dates.length-1]||getSessionDate();
+  const orders=date?ORDERS_TODAY.filter(o=>(o.time||'').startsWith(date)):ORDERS_TODAY;
+  return {date,orders};
+}
+
+function sumChargeParts(parts){
+  return Object.values(parts).reduce((sum,v)=>sum+(v||0),0);
+}
+
+function computeLatestOrderBooked(){
+  const session=getLatestOrderSession();
+  if(!session) return null;
+  const bySym={};
+  session.orders.forEach(o=>{
+    if(!bySym[o.symbol]) bySym[o.symbol]={buys:[],sells:[]};
+    if(o.type==='BUY') bySym[o.symbol].buys.push(o);
+    else if(o.type==='SELL') bySym[o.symbol].sells.push(o);
+  });
+
+  const rows=[];
+  const dpCharged=new Set();
+  Object.entries(bySym).forEach(([sym,{buys,sells}])=>{
+    if(!sells.length) return;
+    const totalSellQty=sells.reduce((s,o)=>s+o.qty,0);
+    const avgSell=sells.reduce((s,o)=>s+o.price*o.qty,0)/totalSellQty;
+    const holdingAvg=getHoldingAvgCost(sym);
+    const isDelivery=holdingAvg!=null;
+    const isSameDay=!isDelivery&&buys.length>0;
+    let avgBuy, matchedQty;
+    if(isDelivery){
+      avgBuy=holdingAvg;
+      matchedQty=totalSellQty;
+    } else if(isSameDay){
+      const totalBuyQty=buys.reduce((s,o)=>s+o.qty,0);
+      if(totalBuyQty<=0) return;
+      avgBuy=buys.reduce((s,o)=>s+o.price*o.qty,0)/totalBuyQty;
+      matchedQty=Math.min(totalBuyQty,totalSellQty);
+    } else {
+      return;
+    }
+    const isMIS=buys.some(o=>o.product==='MIS')||sells.some(o=>o.product==='MIS');
+    const skipDp=isMIS||dpCharged.has(sym);
+    if(!isMIS) dpCharged.add(sym);
+    const bcS=calcZerodhaChargesSplit(avgBuy,matchedQty,false,isMIS,false);
+    const scS=calcZerodhaChargesSplit(avgSell,matchedQty,true,isMIS,skipDp);
+    const _brok=+(bcS.brokerage+scS.brokerage).toFixed(2);
+    const _stt=+(bcS.stt+scS.stt).toFixed(2);
+    const _txn=+(bcS.txn+scS.txn).toFixed(2);
+    const _sebi=+(bcS.sebi+scS.sebi).toFixed(2);
+    const _gst=+(bcS.gst+scS.gst).toFixed(2);
+    const _stamp=+(bcS.stamp+scS.stamp).toFixed(2);
+    const _dp=+(bcS.dp+scS.dp).toFixed(2);
+    const charges=+sumChargeParts({_brok,_stt,_txn,_sebi,_gst,_stamp,_dp}).toFixed(0);
+    const netPnl=+((avgSell-avgBuy)*matchedQty-charges).toFixed(0);
+    rows.push({sym,lots:sells.length,buyPrice:+avgBuy.toFixed(2),sellPrice:+avgSell.toFixed(2),_brok,_stt,_txn,_sebi,_gst,_stamp,_dp,charges,winRate:netPnl>0?100:0,netPnl,_sort:netPnl});
+  });
+  const total=rows.reduce((s,r)=>s+r.netPnl,0);
+  return {source:'Orders.csv',date:session.date,total,rows,hasOrders:session.orders.length>0};
+}
+
+function getLatestBookedSummary(){
+  const orderBooked=computeLatestOrderBooked();
+  if(orderBooked) return orderBooked;
+  if(TRADEBOOK_STATS?.lastDayRows?.length){
+    const rows=TRADEBOOK_STATS.lastDayRows.map(r=>({...r,_sort:r.netPnl}));
+    return {source:'Tradebook',date:TRADEBOOK_STATS.lastDate||'',total:+rows.reduce((s,r)=>s+r.netPnl,0).toFixed(0),rows};
+  }
+  return TRADEBOOK_STATS?.lastBooked?{source:'Tradebook',date:TRADEBOOK_STATS.lastBooked.date||'',total:TRADEBOOK_STATS.lastBooked.total,rows:[],count:TRADEBOOK_STATS.lastBooked.count}:null;
+}
+
 function computeMissedOpp(){
   if(!ORDERS_TODAY?.length||!ALL.length) return;
-  // Use only the latest date's sell orders (Orders.csv can span multiple days)
-  const _allDates=ORDERS_TODAY.map(o=>(o.time||'').substring(0,10)).filter(Boolean).sort();
-  const _latestDay=_allDates[_allDates.length-1]||'';
-  const sessionOrders=_latestDay?ORDERS_TODAY.filter(o=>(o.time||'').startsWith(_latestDay)):ORDERS_TODAY;
-  const sells=sessionOrders.filter(o=>o.type==='SELL');
+  const session=getLatestOrderSession();
+  const sells=(session?.orders||[]).filter(o=>o.type==='SELL');
   if(!sells.length) return;
   // Day high from current ALL scan (TV CSV must be loaded)
   const highMap={};
   ALL.forEach(s=>{if(s.high1d!=null) highMap[s.symbol]=s.high1d;});
   if(!Object.keys(highMap).length) return;
-  const dayDate=_latestDay||getSessionDate();
+  const dayDate=session?.date||getSessionDate();
   const dayMissed=[];
   const seenSyms=new Set();
   sells.forEach(o=>{
@@ -1618,24 +1686,16 @@ function renderStats(){
     if(d.total>=5){const pct=d.up/d.total*100; if(pct>topSecPct){topSecPct=pct;topSec=sec;}}
   });
 
-  // Use cached booked total from renderPerformance (runs first)
   let bookedCard='';
-  if(LATEST_BOOKED_TOTAL!=null){
+  const booked=getLatestBookedSummary();
+  if(booked){
     const sessionToday=getSessionDate();
-    const isToday=LATEST_BOOKED_DATE===sessionToday;
+    const isToday=booked.date===sessionToday;
     const bookedLabel=isToday?'Booked Today':'Latest Session';
-    const srcLabel=LATEST_BOOKED_SOURCE||'Tradebook';
-    const dateLabel=LATEST_BOOKED_DATE||sessionToday;
+    const srcLabel=booked.source||'Tradebook';
+    const dateLabel=booked.date||sessionToday;
     bookedCard=`
-      <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${LATEST_BOOKED_TOTAL>=0?'var(--green)':'var(--red)'}">${LATEST_BOOKED_TOTAL>=0?'+':'−'}₹${Math.round(Math.abs(LATEST_BOOKED_TOTAL)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
-  } else {
-    const bookedFallback=TRADEBOOK_STATS?.lastBooked||null;
-    if(bookedFallback){
-      const bookedLabel='Booked';
-      const bookedDateText=bookedFallback.date?` · ${bookedFallback.date}`:'';
-      bookedCard=`
-        <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${bookedFallback.total>=0?'var(--green)':'var(--red)'}">${bookedFallback.total>=0?'+':'−'}₹${Math.round(Math.abs(bookedFallback.total)).toLocaleString('en-IN')}</div><div class="st-d">${bookedFallback.count} sold · net of charges${bookedDateText}</div></div>`;
-    }
+      <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${booked.total>=0?'var(--green)':'var(--red)'}">${booked.total>=0?'+':'−'}₹${Math.round(Math.abs(booked.total)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
   }
 
   document.getElementById('statsBar').innerHTML=`
@@ -1750,7 +1810,6 @@ function makeSortableTable(id, cols, rows, defaultSortKey, defaultDir=-1, rowSty
 }
 
 function computePerfStats(trips){
-  const meanArr=arr=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:0;
   trips.forEach(r=>{ if(r.netPnlPct==null||isNaN(r.netPnlPct)) r.netPnlPct=r.capital>0?r.netPnl/r.capital*100:r.pnlPct||0; });
   const wins=trips.filter(r=>r.netPnl>0), losses=trips.filter(r=>r.netPnl<=0);
   const winPcts=wins.map(r=>r.netPnlPct).sort((a,b)=>a-b);
@@ -1991,68 +2050,13 @@ function renderPerformance(){
   const tradeWindowTbl=makeSortableTable('tbl-trade-windows',tradeWindowCols,tradeWindowRows,'hour',1,row=>row.hour===_twBucket?'background:rgba(99,102,241,.12);outline:1px solid rgba(99,102,241,.3);outline-offset:-1px':'');
   const hasTradeWindows=tradeWindowRows.length>0;
 
-  // Latest Session — built ONLY from Orders.csv (sells) + Holdings.csv (delivery buy price).
-  // Delivery: buy price = Holdings avg cost. Intraday: buy price = Orders buy orders.
-  // Never falls back to tradebook — tradebook FIFO prices ≠ Holdings avg cost.
+  // Latest Session — Orders.csv wins when present; tradebook is fallback only.
   let todayHtml='';
-  if(ORDERS_TODAY&&ORDERS_TODAY.length){
-    // Filter to only the most recent date's orders (Orders.csv may contain multiple days)
-    const _allDates=ORDERS_TODAY.map(o=>(o.time||'').substring(0,10)).filter(Boolean).sort();
-    const _latestDay=_allDates[_allDates.length-1]||'';
-    const sessionOrders=_latestDay?ORDERS_TODAY.filter(o=>(o.time||'').startsWith(_latestDay)):ORDERS_TODAY;
-    const bySymO={};
-    sessionOrders.forEach(o=>{
-      if(!bySymO[o.symbol]) bySymO[o.symbol]={buys:[],sells:[]};
-      if(o.type==='BUY') bySymO[o.symbol].buys.push(o);
-      else if(o.type==='SELL') bySymO[o.symbol].sells.push(o);
-    });
-    // Build tradebook buy price map as fallback for delivery sells no longer in Holdings
-    const _tbBuyMap={};
-    (TRADEBOOK_STATS?.lastDayRows||[]).forEach(r=>{if(r.sym) _tbBuyMap[r.sym]=r.buyPrice;});
-    const latestRows=[];
-    const dpCharged=new Set();
-    Object.entries(bySymO).forEach(([sym,{buys,sells}])=>{
-      if(!sells.length) return;
-      const totalSellQty=sells.reduce((s,o)=>s+o.qty,0);
-      const avgSell=sells.reduce((s,o)=>s+o.price*o.qty,0)/totalSellQty;
-      // Delivery: Holdings has a known avg cost for this symbol (sold an existing position)
-      // Intraday: no Holdings cost but same-day buys exist (bought and sold same day)
-      const holdingAvg=getHoldingAvgCost(sym)??null;
-      const isDelivery=holdingAvg!==null;
-      const isIntraday=!isDelivery&&buys.length>0;
-      let avgBuy, matchedQty;
-      if(isDelivery){
-        avgBuy=holdingAvg;
-        matchedQty=totalSellQty;
-      } else if(isIntraday){
-        const totalBuyQty=buys.reduce((s,o)=>s+o.qty,0);
-        avgBuy=buys.reduce((s,o)=>s+o.price*o.qty,0)/totalBuyQty;
-        matchedQty=Math.min(totalBuyQty,totalSellQty);
-      } else {
-        return; // no cost basis — skip
-      }
-      // Charge rates: MIS only if any order for this symbol is explicitly MIS product
-      const isMIS=buys.some(o=>o.product==='MIS')||sells.some(o=>o.product==='MIS');
-      const skipDp=isMIS||dpCharged.has(sym);
-      if(!isMIS) dpCharged.add(sym);
-      const bcS=calcZerodhaChargesSplit(avgBuy,matchedQty,false,isMIS,false);
-      const scS=calcZerodhaChargesSplit(avgSell,matchedQty,true,isMIS,skipDp);
-      const _brok=+(bcS.brokerage+scS.brokerage).toFixed(2);
-      const _stt=+(bcS.stt+scS.stt).toFixed(2);
-      const _txn=+(bcS.txn+scS.txn).toFixed(2);
-      const _sebi=+(bcS.sebi+scS.sebi).toFixed(2);
-      const _gst=+(bcS.gst+scS.gst).toFixed(2);
-      const _stamp=+(bcS.stamp+scS.stamp).toFixed(2);
-      const _dp=+(bcS.dp+scS.dp).toFixed(2);
-      const charges=+(_brok+_stt+_txn+_sebi+_gst+_stamp+_dp).toFixed(0);
-      const netPnl=+((avgSell-avgBuy)*matchedQty-charges).toFixed(0);
-      latestRows.push({sym,lots:sells.length,buyPrice:+avgBuy.toFixed(2),sellPrice:+avgSell.toFixed(2),_brok,_stt,_txn,_sebi,_gst,_stamp,_dp,charges,winRate:netPnl>0?100:0,netPnl,_sort:netPnl});
-    });
-    const latestDate=_latestDay||getSessionDate();
-    const latestTotal=latestRows.reduce((s,r)=>s+r.netPnl,0);
-    LATEST_BOOKED_TOTAL=latestTotal;
-    LATEST_BOOKED_DATE=latestDate;
-    LATEST_BOOKED_SOURCE='Orders.csv';
+  const orderBooked=computeLatestOrderBooked();
+  if(orderBooked){
+    const latestRows=orderBooked.rows;
+    const latestDate=orderBooked.date||getSessionDate();
+    const latestTotal=orderBooked.total;
     const _chFmt=v=>v>0?'−₹'+v.toFixed(2):'—';const _chClr=()=>'var(--red)';
     const latestCols=[
       {key:'sym',label:'Symbol',align:'left',fmt:v=>v,clrFn:()=>'var(--t1)',bold:true},
@@ -2110,7 +2114,6 @@ function renderPerformance(){
     const tbRows=TRADEBOOK_STATS.lastDayRows.map(r=>({...r,_sort:r.netPnl}));
     const tbDate=TRADEBOOK_STATS.lastDate||'';
     const tbTotal=+(tbRows.reduce((s,r)=>s+r.netPnl,0)).toFixed(0);
-    LATEST_BOOKED_TOTAL=tbTotal; LATEST_BOOKED_DATE=tbDate; LATEST_BOOKED_SOURCE='Tradebook';
     const tbCols=[
       {key:'sym',label:'Symbol',align:'left',fmt:v=>`<span style="font-weight:700;font-size:12px">${escHtml(v)}</span>`},
       {key:'lots',label:'Lots',align:'right',fmt:v=>`<span style="color:var(--t2)">${v}</span>`},
@@ -2645,11 +2648,10 @@ function toggleStock(sym,checked){
 
 // ── Score-weighted allocation across selected stocks ──
 function getBuyPrice(s){
-  const tick=v=>Math.round(v/0.05)*0.05;
   const ltp=s.price>0?s.price:0;
   const vwap=s.vwap;
   const atrMargin=(s.atr!=null&&ltp>0)?(ltp*s.atr*0.25/100):0;
-  return vwap>0?parseFloat(tick(vwap+atrMargin).toFixed(2)):parseFloat(tick(ltp).toFixed(2));
+  return vwap>0?parseFloat(tickPrice(vwap+atrMargin).toFixed(2)):parseFloat(tickPrice(ltp).toFixed(2));
 }
 // ── Effective learnt TGT% (gross sell-price delta from buy) ──
 // Source of truth = TRADEBOOK_STATS.adaptiveTGT (75th percentile win from FIFO matching).
@@ -3238,11 +3240,10 @@ function parseHoldings(text){
   const rows=parseCSV(text);
   if(!rows.length) return [];
   const hdrs=Object.keys(rows[0]);
-  const find=(patterns)=>hdrs.find(h=>patterns.some(p=>p.test(h.trim())))||null;
-  const symCol=find([/^instrument$/i,/^symbol$/i,/^stock$/i,/^tradingsymbol$/i]);
-  const qtyCol=find([/^qty/i,/^quantity/i]);
-  const avgCol=find([/^avg/i,/^average.*cost/i,/^buy.*price/i]);
-  const ltpCol=find([/^ltp$/i,/^last.*price/i,/^price$/i,/^cur.*price/i]);
+  const symCol=findHeader(hdrs,[/^instrument$/i,/^symbol$/i,/^stock$/i,/^tradingsymbol$/i]);
+  const qtyCol=findHeader(hdrs,[/^qty/i,/^quantity/i]);
+  const avgCol=findHeader(hdrs,[/^avg/i,/^average.*cost/i,/^buy.*price/i]);
+  const ltpCol=findHeader(hdrs,[/^ltp$/i,/^last.*price/i,/^price$/i,/^cur.*price/i]);
   if(!symCol||!qtyCol){console.warn('Holdings CSV: could not detect Symbol/Qty columns');return [];}
   // Build cost map from ALL rows (including sold/zero qty)
   HOLD_COST_MAP={};
@@ -3265,12 +3266,11 @@ function parsePositions(text){
   const rows=parseCSV(text);
   if(!rows.length) return [];
   const hdrs=Object.keys(rows[0]);
-  const find=(patterns)=>hdrs.find(h=>patterns.some(p=>p.test(h.trim())))||null;
-  const symCol=find([/^instrument$/i,/^symbol$/i,/^tradingsymbol$/i]);
-  const qtyCol=find([/^qty/i,/^quantity/i]);
-  const avgCol=find([/^avg/i,/^average$/i]);
-  const ltpCol=find([/^ltp$/i,/^last.*price/i]);
-  const pnlCol=find([/^p&l$/i,/^p.l$/i,/^pnl$/i]);
+  const symCol=findHeader(hdrs,[/^instrument$/i,/^symbol$/i,/^tradingsymbol$/i]);
+  const qtyCol=findHeader(hdrs,[/^qty/i,/^quantity/i]);
+  const avgCol=findHeader(hdrs,[/^avg/i,/^average$/i]);
+  const ltpCol=findHeader(hdrs,[/^ltp$/i,/^last.*price/i]);
+  const pnlCol=findHeader(hdrs,[/^p&l$/i,/^p.l$/i,/^pnl$/i]);
   if(!symCol||!qtyCol){console.warn('Positions CSV: could not detect columns');return [];}
   return rows.map(r=>{
     const sym=normSym(r[symCol]);
@@ -3287,14 +3287,13 @@ function parseOrders(text){
   const rows=parseCSV(text);
   if(!rows.length) return [];
   const hdrs=Object.keys(rows[0]);
-  const find=(patterns)=>hdrs.find(h=>patterns.some(p=>p.test(h.trim())))||null;
-  const timeCol=find([/^time$/i,/^timestamp$/i,/^date$/i]);
-  const typeCol=find([/^type$/i]);
-  const symCol=find([/^instrument$/i,/^symbol$/i,/^tradingsymbol$/i,/^stock$/i]);
-  const qtyCol=find([/^qty/i,/^quantity/i]);
-  const priceCol=find([/^avg.*price$/i,/^price$/i,/^avg.*trade/i]);
-  const statusCol=find([/^status$/i]);
-  const productCol=find([/^product$/i]);
+  const timeCol=findHeader(hdrs,[/^time$/i,/^timestamp$/i,/^date$/i]);
+  const typeCol=findHeader(hdrs,[/^type$/i]);
+  const symCol=findHeader(hdrs,[/^instrument$/i,/^symbol$/i,/^tradingsymbol$/i,/^stock$/i]);
+  const qtyCol=findHeader(hdrs,[/^qty/i,/^quantity/i]);
+  const priceCol=findHeader(hdrs,[/^avg.*price$/i,/^price$/i,/^avg.*trade/i]);
+  const statusCol=findHeader(hdrs,[/^status$/i]);
+  const productCol=findHeader(hdrs,[/^product$/i]);
   if(!symCol||!typeCol||!qtyCol||!priceCol||!statusCol){console.warn('Orders CSV: missing required columns');return [];}
   return rows.map(r=>{
     const status=String(r[statusCol]||'').trim().toUpperCase();
@@ -3354,13 +3353,12 @@ function parseTradebook(text){
   const rows=parseCSV(text);
   if(!rows.length) return null;
   const hdrs=Object.keys(rows[0]);
-  const find=(pats)=>hdrs.find(h=>pats.some(p=>p.test(h.trim())))||null;
-  const symCol=find([/^symbol$/i,/^tradingsymbol$/i]);
-  const dateCol=find([/^trade_date$/i,/^date$/i]);
-  const typeCol=find([/^trade_type$/i,/^type$/i,/^buy.*sell/i]);
-  const qtyCol=find([/^quantity$/i,/^qty$/i]);
-  const priceCol=find([/^price$/i,/^trade_price$/i]);
-  const timeCol=find([/^order_execution_time$/i,/^time$/i]);
+  const symCol=findHeader(hdrs,[/^symbol$/i,/^tradingsymbol$/i]);
+  const dateCol=findHeader(hdrs,[/^trade_date$/i,/^date$/i]);
+  const typeCol=findHeader(hdrs,[/^trade_type$/i,/^type$/i,/^buy.*sell/i]);
+  const qtyCol=findHeader(hdrs,[/^quantity$/i,/^qty$/i]);
+  const priceCol=findHeader(hdrs,[/^price$/i,/^trade_price$/i]);
+  const timeCol=findHeader(hdrs,[/^order_execution_time$/i,/^time$/i]);
   if(!symCol||!typeCol||!qtyCol||!priceCol){console.warn('Tradebook CSV: missing columns');return null;}
 
   // Group trades by symbol
@@ -3422,7 +3420,6 @@ function parseTradebook(text){
   const lossPcts=losses.map(r=>r.pnlPct).sort((a,b)=>a-b);
   const percentile=(arr,p)=>arr.length?arr[Math.min(Math.floor(arr.length*p),arr.length-1)]:0;
   const median=(arr)=>percentile(arr,0.5);
-  const meanArr=(arr)=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:0;
 
   const avgWinPct=meanArr(winPcts);
   const avgLossPct=meanArr(lossPcts);
@@ -3438,21 +3435,6 @@ function parseTradebook(text){
   const adaptiveTGT=+Math.abs(p75Win).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
 
-  const bookedByDate={};
-  roundTrips.forEach(r=>{
-    const sellCharges=calcZerodhaCharges(r.sellPrice,r.qty,true);
-    const net=(r.sellPrice-r.buyPrice)*r.qty-sellCharges;
-    if(!bookedByDate[r.sellDate]) bookedByDate[r.sellDate]={total:0,count:0};
-    bookedByDate[r.sellDate].total+=net;
-    bookedByDate[r.sellDate].count+=1;
-  });
-  const dates=Object.keys(bookedByDate).sort((a,b)=>new Date(b)-new Date(a));
-  const lastBooked=dates.length?{
-    date:dates[0],
-    total:+bookedByDate[dates[0]].total.toFixed(0),
-    count:bookedByDate[dates[0]].count
-  }:null;
-
   const stats={
     roundTrips:roundTrips.length, winners:wins.length, losers:losses.length,
     winRate:+winRate.toFixed(1),
@@ -3461,8 +3443,7 @@ function parseTradebook(text){
     p75Win:+p75Win.toFixed(2), p25Loss:+p25Loss.toFixed(2),
     avgHoldDays:+avgHoldDays.toFixed(1), avgCapital:+Math.round(avgCapital),
     adaptiveSL, adaptiveTGT, minExitPct,
-    riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
-    lastBooked
+    riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2)
   };
 
   // Add netPnl (with charges) per trip and store full array for renderPerformance.
@@ -3481,6 +3462,19 @@ function parseTradebook(text){
     return{...r,charges,netPnl,netPnlPct};
   });
   stats.tripsData=tripsData;
+
+  const bookedByDate={};
+  tripsData.forEach(r=>{
+    if(!bookedByDate[r.sellDate]) bookedByDate[r.sellDate]={total:0,count:0};
+    bookedByDate[r.sellDate].total+=r.netPnl;
+    bookedByDate[r.sellDate].count+=1;
+  });
+  const dates=Object.keys(bookedByDate).sort((a,b)=>new Date(b)-new Date(a));
+  stats.lastBooked=dates.length?{
+    date:dates[0],
+    total:+bookedByDate[dates[0]].total.toFixed(0),
+    count:bookedByDate[dates[0]].count
+  }:null;
 
   // Build lastDate / lastDayRows / lastDayTotal for the latest-session panel
   const lastDate=dates.length?dates[0]:null;
@@ -3518,15 +3512,7 @@ function parseTradebook(text){
 // isIntraday=true → MIS rates, false → CNC/delivery rates.
 // skipDp=true suppresses the ₹15.34 DP charge (use for 2nd+ trips of same ISIN on same sell day).
 function calcZerodhaCharges(price, qty, isSell, isIntraday, skipDp){
-  const posVal=price*Math.abs(qty);
-  const brokerage=isIntraday?Math.min(0.0003*posVal,20):0;  // CNC: ₹0; MIS: min(0.03%,₹20)/order
-  const stt=isIntraday?(isSell?0.00025*posVal:0):0.001*posVal; // CNC: 0.1% both sides; MIS: 0.025% sell only
-  const txn=0.0000307*posVal;                                // NSE txn: 0.00307% both sides
-  const sebi=0.000001*posVal;                                // SEBI: ₹10/crore both sides
-  const gst=0.18*(brokerage+sebi+txn);                      // GST: 18% on (brokerage+txn+SEBI)
-  const stamp=isSell?0:(isIntraday?0.00003:0.00015)*posVal; // Stamp buy-only: MIS 0.003%, CNC 0.015%
-  const dp=(isSell&&!isIntraday&&!skipDp)?15.34:0;          // DP: ₹15.34 sell-only, CNC, once per ISIN/day
-  return brokerage+stt+txn+sebi+gst+stamp+dp;
+  return sumChargeParts(calcZerodhaChargesSplit(price,qty,isSell,!!isIntraday,!!skipDp));
 }
 
 // Returns per-component breakdown (same rates as calcZerodhaCharges).
@@ -3542,35 +3528,10 @@ function calcZerodhaChargesSplit(price, qty, isSell, isIntraday, skipDp){
   return {brokerage,stt,txn,sebi,gst,stamp,dp};
 }
 
-function getPosition(symbol){
-  // Return position obj with qty and avg from POSITIONS (positive qty only)
-  if(!POSITIONS||!POSITIONS.length) return null;
-  const rows=POSITIONS.filter(p=>p.symbol===symbol && p.qty>0 && p.avg!=null && p.avg>0);
-  if(!rows.length) return null;
-  const totalQty=rows.reduce((sum,p)=>sum+p.qty,0);
-  const totalCost=rows.reduce((sum,p)=>sum+p.qty*p.avg,0);
-  const avgPrice=totalQty>0?totalCost/totalQty:null;
-  return {qty:totalQty, avg:avgPrice};
-}
-
-function getSellAvgPrice(symbol){
-  // Use Positions if available, otherwise fallback to Holdings cost map
-  const posRow=getPosition(symbol);
-  if(posRow && posRow.avg!=null) return {qty:posRow.qty, avg:posRow.avg, source:'positions'};
-  // Fallback to holdings cost map
-  const holdingAvg=HOLD_COST_MAP[symbol];
-  if(holdingAvg!=null){
-    const holdingQty=HOLDINGS ? HOLDINGS.find(h=>h.symbol===symbol)?.qty || 0 : 0;
-    if(holdingQty>0) return {qty:holdingQty, avg:holdingAvg, source:'holdings'};
-  }
-  return null;
-}
-
 function showGttPopup(){
   try{_showGttPopupInner();}catch(e){console.error('showGttPopup error:',e);showToast('GTT popup error: '+e.message,5000,true);}
 }
 function _showGttPopupInner(){
-  const tick=v=>Math.round(v/0.05)*0.05;
   const clr=v=>v>0?'var(--green)':v<0?'var(--red)':'var(--t2)';
   const fmtRs=v=>v!=null?'₹'+Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
   const fmtPct=v=>v!=null?(v>=0?'+':'')+Number(v).toFixed(2)+'%':'—';
@@ -3595,8 +3556,8 @@ function _showGttPopupInner(){
     const todayBuy=ORDERS_TODAY?.find(o=>o.symbol===sym&&o.type==='buy');
     const buyDateStr=todayBuy?(todayBuy.time||'').substring(0,10)||null:LAST_BUY_DATE_MAP[sym]||null;
     const daysHeld=buyDateStr?Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000):null;
-    const tgtPrice=avg?tick(avg*(1+adaptiveTGT/100)):null;
-    const slPrice=avg?tick(avg*(1-adaptiveSL/100)):null;
+    const tgtPrice=avg?tickPrice(avg*(1+adaptiveTGT/100)):null;
+    const slPrice=avg?tickPrice(avg*(1-adaptiveSL/100)):null;
     rows.push({sym,qty,avg,ltp,pnlPct,daysHeld,tgtPrice,slPrice});
   };
   if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) addSym(p.symbol,p.qty,p.avg||p.avgCost,p.ltp);});
@@ -3648,7 +3609,6 @@ function exportBasket(){
   const selList=FILT.filter(s=>SELECTED.has(s.symbol));
   if(!selList.length){showToast('Select at least one stock first.',3000,true);return;}
   const basketAlloc = computeAlloc(capital, selList);
-  const tick=v=>Math.round(v/0.05)*0.05;
 
   // Universal SL/TGT from tradebook (already cost-adjusted)
   const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
@@ -3679,7 +3639,7 @@ function exportBasket(){
       params:{
         transactionType:'BUY',product:'CNC',orderType:'LIMIT',
         validity:'DAY',validityTTL:1,
-        quantity:qty,price:parseFloat(tick(buyPrice).toFixed(2)),
+        quantity:qty,price:parseFloat(tickPrice(buyPrice).toFixed(2)),
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
         gtt:{target:adaptiveTGT},
@@ -3740,7 +3700,7 @@ function nseDate(){
 function setMsg(m){document.getElementById('ldMsg').textContent=m;}
 
 async function processFiles(files){
-  NSE_BHAV={};NSE_52W={};NSE_SURV={};NSE_BULK={};NSE_BLOCK={};NSE_LOADED=false;SELECTED=new Set();
+  NSE_BHAV={};NSE_52W={};NSE_SURV={};NSE_BULK={};NSE_BLOCK={};SELECTED=new Set();
   let tvFile=null,nseZip=null,holdFile=null,posFile=null,ordFile=null,tbFile=null;
   for(const f of files){
     if(f.name.toLowerCase().endsWith('.zip')||f.name.toLowerCase().includes('.zip')){nseZip=nseZip||f;continue;}
@@ -3797,7 +3757,6 @@ async function processFiles(files){
         }
       }
       await processZipEntries(outerZip);
-      NSE_LOADED=true;
     }catch(e){console.error('ZIP error:',e);}
   }
 
@@ -3939,11 +3898,6 @@ dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dov');})
 dz.addEventListener('dragleave',()=>dz.classList.remove('dov'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dov');if(e.dataTransfer.files.length)processFiles(Array.from(e.dataTransfer.files));});
 
-
-// ══════════════════════════════════════════════════
-// PAGE SWITCHING
-// ══════════════════════════════════════════════════
-function switchPage(n){}
 
 // ══════════════════════════════════════════════════
 // SCANNER FILTER PERSISTENCE
