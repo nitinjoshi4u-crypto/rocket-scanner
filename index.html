@@ -417,23 +417,40 @@ const FS = (() => {
     }catch(e){return null;}
   }
 
+  let _pendingHandle=null; // stored handle that needs user-gesture to grant permission
+
   async function init(){
     const h=await _loadHandle();
     if(!h) return null;
     try{
-      let perm=await h.queryPermission({mode:'readwrite'});
-      if(perm!=='granted') perm=await h.requestPermission({mode:'readwrite'});
-      if(perm!=='granted') return null;
-      dirHandle=h;
+      const perm=await h.queryPermission({mode:'readwrite'});
+      if(perm==='granted'){dirHandle=h;updateFolderUI();return await read();}
+      // Permission needs user gesture — store handle for reconnect(), don't call requestPermission here
+      _pendingHandle=h;
+      return null;
     }catch(e){return null;}
-    updateFolderUI();
-    return await read();
   }
+
+  // Call with a user gesture (e.g. button click) to re-grant permission for the stored handle
+  async function reconnect(){
+    const h=_pendingHandle||await _loadHandle();
+    if(!h) return null;
+    try{
+      const perm=await h.requestPermission({mode:'readwrite'});
+      if(perm!=='granted') return null;
+      dirHandle=h; _pendingHandle=null;
+      await _saveHandle(h);
+      updateFolderUI();
+      return await read();
+    }catch(e){return null;}
+  }
+
+  function needsReconnect(){ return !!_pendingHandle; }
 
   async function pickFolder(){
     try{
       const h=await window.showDirectoryPicker({mode:'readwrite'});
-      dirHandle=h;
+      dirHandle=h; _pendingHandle=null;
       await _saveHandle(h);
       updateFolderUI();
       return true;
@@ -496,7 +513,7 @@ const FS = (() => {
   function folderName(){ return dirHandle?.name||null; }
   function hasFolder(){ return !!dirHandle; }
 
-  return {init,pickFolder,read,write,set,setMultiple,get,load,getBrain,reset,folderName,hasFolder};
+  return {init,pickFolder,reconnect,needsReconnect,read,write,set,setMultiple,get,load,getBrain,reset,folderName,hasFolder};
 })();
 
 function updateFolderUI(){
@@ -507,6 +524,11 @@ function updateFolderUI(){
     btn.title='Brain folder: '+FS.folderName()+'. Click to change.';
     btn.style.borderColor='rgba(34,197,94,.4)';
     btn.style.color='var(--green)';
+  } else if(FS.needsReconnect()){
+    btn.textContent='📁 Reconnect Brain';
+    btn.title='Brain folder exists but needs permission. Click to reconnect.';
+    btn.style.borderColor='rgba(251,191,36,.5)';
+    btn.style.color='var(--amber)';
   } else {
     btn.textContent='📁 Folder';
     btn.title='Pick a folder to auto-save brain data (correlations, snapshots, scan data)';
@@ -516,6 +538,18 @@ function updateFolderUI(){
 }
 
 async function pickDataFolder(){
+  if(FS.needsReconnect()){
+    const brain=await FS.reconnect();
+    if(brain){
+      // Permission granted — reload so initApp restores all state cleanly
+      window.location.reload();
+    } else {
+      showToast('Reconnect failed — try picking the folder manually.',3000,true);
+      const ok=await FS.pickFolder();
+      if(ok) showToast('<strong>Folder set:</strong> '+FS.folderName());
+    }
+    return;
+  }
   const ok=await FS.pickFolder();
   if(ok) showToast('<strong>Folder set:</strong> '+FS.folderName()+' — brain data will auto-save here.');
 }
@@ -2207,7 +2241,7 @@ function buildSurvCorrHTML(){
     const conf=r.sessions<2?'low':r.sessions<5?'med':'high';
     const verdict=r.sessions<2?'❓':r.winRate<35&&r.avgPnl<-0.5?'🚫 Filter':r.winRate>65&&r.avgPnl>0.5?'✅ Safe':'📊 Neutral';
     return {col:r.col,sessions:r.sessions,lastCount:r.lastCount,winRate:r.winRate,avgPnl:r.avgPnl,
-      verdict,_conf:conf,_maxSess:maxSess,_canFilter:verdict.startsWith('🚫')?1:0};
+      verdict,_conf:conf,_maxSess:maxSess};
   });
   const scCols=[
     {key:'col',label:'Surveillance Column',align:'left',fmt:(v)=>`<span style="font-size:11px" title="${escHtml(v)}">${escHtml(v)}</span>`},
@@ -2216,7 +2250,6 @@ function buildSurvCorrHTML(){
     {key:'winRate',label:'Win Rate',align:'right',fmt:(v)=>`<span style="color:${v<40?'var(--red)':v>60?'var(--green)':'var(--amber)'};font-weight:700;font-family:'DM Mono',monospace">${v.toFixed(1)}%</span>`},
     {key:'avgPnl',label:'Avg P&L%',align:'right',fmt:(v)=>`<span style="color:${v<0?'var(--red)':v>0?'var(--green)':'var(--t3)'};font-weight:700;font-family:'DM Mono',monospace">${v>=0?'+':''}${v.toFixed(2)}%</span>`},
     {key:'verdict',label:'Signal',align:'left',fmt:(v)=>`<span style="color:${v.startsWith('🚫')?'var(--red)':v.startsWith('✅')?'var(--green)':'var(--amber)'};font-weight:700">${v}</span>`},
-    {key:'_canFilter',label:'Action',align:'right',fmt:(v,r)=>v?`<button onclick="addSurvRule(${JSON.stringify(r.col)})" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:var(--red);font-size:10px;font-weight:700;cursor:pointer">+ Filter</button>`:''},
   ];
   _methTbls.sc=makeSortableTable('tbl-sc',scCols,scRows,'winRate',1); // lowest win rate first
   return `
@@ -3839,10 +3872,9 @@ async function initApp(){
 
     // Step 2f2: Restore surveillance P&L correlation accumulator
     try{const sc=brain[SURV_CORR_STORE];if(sc&&typeof sc==='object') SURV_CORR_ACC=sc;}catch(e){}
-    // Purge any non-flag columns (ScripCode, Symbol, Nse Exclusive, Status, Series, Filler*) from old bad data
+    // Purge stale identity-column entries (one-time cleanup, no write-back needed)
     {const _pNF=new Set(['scripcode','symbol','nse exclusive','status','series']);
-    Object.keys(SURV_CORR_ACC).forEach(k=>{const c=SURV_CORR_ACC[k]?.col||'';const hl=c.trim().toLowerCase();if(_pNF.has(hl)||/^filler/i.test(c.trim())){delete SURV_CORR_ACC[k];}});
-    FS.set(SURV_CORR_STORE,SURV_CORR_ACC);}
+    Object.keys(SURV_CORR_ACC).forEach(k=>{const c=SURV_CORR_ACC[k]?.col||'';const hl=c.trim().toLowerCase();if(_pNF.has(hl)||/^filler/i.test(c.trim())) delete SURV_CORR_ACC[k];});}
 
     // Step 2g: Restore surveillance custom rules
     try{
@@ -3867,7 +3899,16 @@ async function initApp(){
     }catch(e){}
 
   } else {
-    console.log('INIT: no brain file found — starting fresh. Pick a folder to enable auto-save.');
+    if(FS.needsReconnect()){
+      console.log('INIT: brain folder found but needs permission — showing reconnect prompt.');
+      // Show a prominent banner so the user knows to click the button
+      setTimeout(()=>{
+        const bar=document.getElementById('infoBar');
+        if(bar) bar.innerHTML=`<span class="info-pill pill-amber" style="cursor:pointer;font-weight:700" onclick="pickDataFolder()" title="Click to reconnect brain folder and restore all session data">⚠ Brain needs permission — click to reconnect (or click 📁 Reconnect Brain above)</span>`;
+      },200);
+    } else {
+      console.log('INIT: no brain file found — starting fresh. Pick a folder to enable auto-save.');
+    }
   }
 
   // Step 3b: Render performance tab first (populates PERF_TRADE_WINDOWS for current-window pill)
