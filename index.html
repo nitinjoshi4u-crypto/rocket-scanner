@@ -317,6 +317,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Top-up %</span><input type="number" id="fTopupAlloc" value="50" placeholder="50" min="10" max="100" step="10" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Allocation % for top-up candidates vs a fresh buy. 50 means top-up gets half the normal score-weighted allocation. Default 50%."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="1" max="30" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" title="Minimum 1D % gain to qualify as a Rocket for engine learning. Default 10%."></div>
+   <button class="btn" id="fBuyZoneBtn" onclick="toggleBuyZoneFilter()" title="Show only stocks where price ≤ VWAP+0.5×ATR (prime entry zone)" style="font-weight:700;white-space:nowrap">● Buy Zone</button>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
    <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--blue);font-weight:700" title="GTT values for all holdings and positions">📋 GTT Values <span id="gttCount"></span></button>
   </div>
@@ -769,6 +770,7 @@ function calcAutoVolume(){
   return Math.round(minsFromOpen*mult);
 }
 let VOL_AUTO=true;
+let FILTER_BUY_ZONE=false; // when true, only stocks with price ≤ VWAP+0.5×ATR are shown
 let _initInProgress=true; // suppresses applyFilters inside setAutoVolume during startup
 function setAutoVolume(){
   if(!VOL_AUTO) return;
@@ -3040,25 +3042,12 @@ function renderTable(){
     const isSelected=SELECTED.has(s.symbol);
     const am=allocMap[s.symbol];
 
-    // ── Buy-readiness signal ──
-    // Green  = price ≤ VWAP + 0.5×ATR  (at/below VWAP — prime entry zone)
-    // Amber  = price ≤ VWAP + 1.0×ATR  (slightly extended but acceptable)
-    // (none) = price > VWAP + 1.0×ATR  (has run, wait for pullback)
-    // Requires VWAP from NSE bhav data; falls back gracefully when unavailable.
-    const _brs=(()=>{
-      const p=s.price, v=s.vwap, a=s.atr;
-      if(!p||!v||v<=0) return null;
-      const atrAbs=a>0?p*a/100:0; // ATR% → price units
-      if(p<=v+0.5*atrAbs) return {label:'● BUY ZONE',color:'var(--green)',tip:`Price ≤ VWAP+0.5×ATR (VWAP ₹${fmt(v)}). Prime entry — at or below VWAP.`};
-      if(p<=v+1.0*atrAbs) return {label:'◐ NEAR',color:'var(--amber)',tip:`Price ≤ VWAP+1×ATR (VWAP ₹${fmt(v)}). Slightly extended — acceptable entry, prefer dip.`};
-      return {label:'○ WAIT',color:'var(--t3)',tip:`Price > VWAP+1×ATR (VWAP ₹${fmt(v)}). Has run — wait for pullback toward VWAP.`};
-    })();
 
     // Fixed cells
     let cells=`
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
       <td><span class="sc-m">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
-      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:${_brs?.color||'var(--t1)'}">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div>${_brs?`<div style="font-size:9px;font-weight:700;color:${_brs.color};margin-top:1px;cursor:help" title="${escHtml(_brs.tip)}">${_brs.label}</div>`:''}</td>
+      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:var(--t1)">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
       <td>${fDel(s.delivPct)}</td>
@@ -3128,6 +3117,23 @@ function toggleFilters(){
   const collapsed=p.classList.toggle('collapsed');
   if(a) a.textContent=collapsed?'▶':'▼';
 }
+function isBuyZone(s){
+  const p=s.price, v=s.vwap, a=s.atr;
+  if(!p||!v||v<=0) return false;
+  const atrAbs=a>0?p*a/100:0;
+  return p<=v+0.5*atrAbs;
+}
+function toggleBuyZoneFilter(){
+  FILTER_BUY_ZONE=!FILTER_BUY_ZONE;
+  const btn=document.getElementById('fBuyZoneBtn');
+  if(btn){
+    btn.style.background=FILTER_BUY_ZONE?'rgba(34,197,94,.18)':'';
+    btn.style.borderColor=FILTER_BUY_ZONE?'rgba(34,197,94,.5)':'';
+    btn.style.color=FILTER_BUY_ZONE?'var(--green)':'';
+  }
+  saveFilterState();
+  applyFilters();
+}
 function applyFilters(){
   const minScore=parseFloat(document.getElementById('fMinScore')?.value)||0;
   const fvol=parseFloat(document.getElementById('fVol')?.value)||0;
@@ -3146,6 +3152,7 @@ function applyFilters(){
     if(fMin1D>-Infinity){if(x.priceChange===null||x.priceChange<fMin1D)return false;}
     if(fMax1D<Infinity){if(x.priceChange!==null&&x.priceChange>fMax1D)return false;}
     if(fPriceMin>0&&(x.price||0)<fPriceMin)return false;
+    if(FILTER_BUY_ZONE&&!isBuyZone(x)) return false;
     if(fPriceMax>0&&(x.price||0)>fPriceMax)return false;
     return true;
   });
@@ -3296,6 +3303,7 @@ function clearFilters(){
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='70';
   const rktEl=document.getElementById('fRocketPct');if(rktEl)rktEl.value='10';
   VOL_AUTO=true;setAutoVolume();
+  FILTER_BUY_ZONE=false;const _bzBtn=document.getElementById('fBuyZoneBtn');if(_bzBtn){_bzBtn.style.background='';_bzBtn.style.borderColor='';_bzBtn.style.color='';}
   applyFilters();
   localStorage.removeItem(SCANNER_STORE);
 }
@@ -4356,6 +4364,7 @@ function saveFilterState(){
     topupAlloc:document.getElementById('fTopupAlloc')?.value||'50',
     sortCol:SCOL,
     sortDir:SDIR,
+    buyZone:FILTER_BUY_ZONE,
   };
   localStorage.setItem(SCANNER_STORE, JSON.stringify(state));
 }
@@ -4383,6 +4392,11 @@ function loadFilterState(){
     }
     if(state.sortCol)SCOL=state.sortCol;
     if(state.sortDir)SDIR=state.sortDir;
+    if(state.buyZone!=null){
+      FILTER_BUY_ZONE=!!state.buyZone;
+      const btn=document.getElementById('fBuyZoneBtn');
+      if(btn&&FILTER_BUY_ZONE){btn.style.background='rgba(34,197,94,.18)';btn.style.borderColor='rgba(34,197,94,.5)';btn.style.color='var(--green)';}
+    }
   }catch(e){console.warn('Could not load filter state',e);}
   
 }
