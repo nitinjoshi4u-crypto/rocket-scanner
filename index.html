@@ -811,8 +811,8 @@ function meanArr(arr){return arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:0;}
 function tickPrice(v){return Math.round(v/0.05)*0.05;}
 function survRuleKey(label){return String(label||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function isSurvFlag(v){
-  const s=String(v||'').trim().toLowerCase();
-  return s!==''&&s!=='100'&&s!=='n'&&s!=='no';
+  const s=String(v||'').trim();
+  return s!==''&&s!=='100';
 }
 const SURV_DEFAULT_RULES=[
   {column:'Default',label:'Default'},
