@@ -2375,7 +2375,6 @@ function buildHardFilterMethodologyHTML(E){
   const datalistHtml=availableCols.map(col=>`<option value="${escHtml(col)}"></option>`).join('');
   const hfRows=rows.map(row=>({
     criteria:row.criteria,
-    flaggedSort:row.kind==='surv'&&row.active?(row.flagged||0):-1,
     removedSort:row.active&&row.removed!=null?(row.removed||0):-1,
     rocketsFiltered:row.rockets||[],
     rocketsSort:(row.rockets||[]).length,
@@ -2387,7 +2386,6 @@ function buildHardFilterMethodologyHTML(E){
   }));
   const hfCols=[
     {key:'criteria',label:'Filter / Column',align:'left',fmt:(v,r)=>`<span style="font-size:11px;color:${r.missing?'var(--amber)':r.active?'var(--t1)':'var(--t3)'}">${escHtml(v)}${r.inactiveNote?`<div style="font-size:10px;color:${r.missing?'var(--amber)':r.kind==='surv'?'var(--red)':'var(--amber)'};margin-top:2px">${r.inactiveNote}</div>`:''}</span>`},
-    {key:'flaggedSort',label:'Flagged',align:'right',fmt:(v,r)=>v>=0?`<span style="color:${v>0?'var(--orange)':'var(--t3)'};font-weight:700;font-family:'DM Mono',monospace">${v.toLocaleString()}</span>`:'&mdash;'},
     {key:'removedSort',label:'Removed',align:'right',fmt:(v,r)=>v>=0?`<span style="color:${v>0?'var(--red)':'var(--t3)'};font-weight:700;font-family:'DM Mono',monospace">${v.toLocaleString()}</span>`:'&mdash;'},
     {key:'rocketsSort',label:'🚀 Rockets Filtered',align:'left',fmt:(v,r)=>{
       const list=r.rocketsFiltered||[];
