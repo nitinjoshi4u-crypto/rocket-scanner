@@ -49,7 +49,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .sp{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--fire);border-radius:50%;animation:sp .7s linear infinite;margin:0 auto 14px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .ld-msg{color:var(--t2);font-size:13px;margin-top:8px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:18px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:18px 0}
 .st{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;position:relative;overflow:hidden}
 .st::after{content:'';position:absolute;top:0;left:0;right:0;height:2px}
 .st:nth-child(1)::after{background:linear-gradient(90deg,var(--fire),var(--fire2))}.st:nth-child(2)::after{background:linear-gradient(90deg,var(--green),var(--cyan))}.st:nth-child(3)::after{background:linear-gradient(90deg,var(--blue),var(--purple))}.st:nth-child(4)::after{background:linear-gradient(90deg,var(--orange),var(--fire))}.st:nth-child(5)::after{background:linear-gradient(90deg,var(--cyan),var(--green))}.st:nth-child(6)::after{background:linear-gradient(90deg,var(--purple),var(--blue))}
@@ -338,6 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 <script>
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
+let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
 let SCORE_MAP={}; // {symbol → rocketScore} for ALL parsed stocks including filtered-out ones
 let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
@@ -1821,15 +1822,29 @@ function renderStats(){
       <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${booked.total>=0?'var(--green)':'var(--red)'}">${booked.total>=0?'+':'−'}₹${Math.round(Math.abs(booked.total)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
   }
 
-  // Stale-data banner: shown when ALL is brain-restored, not from a live TV CSV upload
-  const staleBanner=_tvLoadedThisSession?'':
+  // Stale-data banner: shown when scan is brain-restored AND from a previous day
+  const _scanIsToday=_scanSavedDate===getSessionDate();
+  const staleBanner=(_tvLoadedThisSession||_scanIsToday)?'':
     `<div style="grid-column:1/-1;padding:7px 14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);border-radius:8px;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:8px">
       <span>📦</span><span>Showing last saved scan — upload <strong>ALL NSE.csv</strong> to get live scores and buy signals.</span>
     </div>`;
 
+  // Top Pick card — #1 stock in FILT by score
+  const topPick=FILT[0]||ALL[0]||null;
+  const topPickCard=topPick?`<div class="st"><div class="st-l">Top Pick</div><div class="st-v" style="font-size:18px;color:var(--amber);letter-spacing:-.3px">${topPick.symbol}</div><div class="st-d">${topPick.rocketScore.toFixed(1)} score · <span style="color:${(topPick.priceChange||0)>=0?'var(--green)':'var(--red)'}">${(topPick.priceChange||0)>=0?'+':''}${(topPick.priceChange||0).toFixed(1)}%</span>${topPick.sector?` · ${topPick.sector}`:''}</div></div>`:'';
+
+  // Edge card — tradebook win rate + R:R
+  const edgeCard=(()=>{
+    if(!TRADEBOOK_STATS) return '';
+    const wr=TRADEBOOK_STATS.winRate,rr=TRADEBOOK_STATS.riskReward,lots=TRADEBOOK_STATS.roundTrips;
+    const wrColor=wr>=60?'var(--green)':wr>=45?'var(--amber)':'var(--red)';
+    return `<div class="st"><div class="st-l">Edge</div><div class="st-v" style="color:${wrColor}">${wr.toFixed(0)}%</div><div class="st-d">win rate · R:R ${rr.toFixed(2)} · ${lots} lots</div></div>`;
+  })();
+
   document.getElementById('statsBar').innerHTML=`${staleBanner}
     <div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span></div></div>
-    <div class="st"><div class="st-l">S-Tier Rockets</div><div class="st-v" style="color:#fb923c">${sc}</div><div class="st-d">${ac} A-tier strong</div></div>
+    ${topPickCard}
+    ${edgeCard}
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
     <div class="st"><div class="st-l">Top Sector</div><div class="st-v" style="font-size:15px;color:var(--green)">${topSec}</div><div class="st-d">${topSecPct.toFixed(0)}% advancing</div></div>
     <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${ENGINE_DATA?.rocketThreshold||10}%${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''} ${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
@@ -4192,7 +4207,10 @@ async function initApp(){
         FILT=[...ALL];
         SELECTED=new Set(ALL.map(s=>s.symbol));
         if(saved.fileTag){const ft=document.getElementById('fileTag');if(ft)ft.textContent=saved.fileTag;}
-        if(saved.ts){const _ist=new Date(saved.ts+5.5*3600000);const _ts=_ist.toISOString().replace('T',' ').slice(0,16)+' IST';const _stEl=document.getElementById('lastScanTag');const _svEl=document.getElementById('lastScanVal');if(_stEl&&_svEl){_svEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}}
+        if(saved.ts){const _ist=new Date(saved.ts+5.5*3600000);const _ts=_ist.toISOString().replace('T',' ').slice(0,16)+' IST';const _stEl=document.getElementById('lastScanTag');const _svEl=document.getElementById('lastScanVal');if(_stEl&&_svEl){_svEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}
+          // Track the saved scan date so the stale banner can check if it's from today
+          _scanSavedDate=_ist.toISOString().slice(0,10);
+        }
         console.log('INIT: restored',ALL.length,'stocks from file');
         // Restore Seen counts for today
         try{const _rcS=brain[REC_COUNT_STORE];if(_rcS&&typeof _rcS==='object'){
