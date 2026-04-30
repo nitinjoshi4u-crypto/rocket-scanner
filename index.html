@@ -2448,13 +2448,6 @@ function removeSurvRule(key){
   _refreshHFSection();
   showToast('Surveillance rule removed.',2500);
 }
-function restoreSurvDefaultRule(key){
-  SURV_DISABLED_DEFAULTS.delete(key);
-  saveSurvRules();
-  if(ENGINE_DATA){ENGINE_DATA.survRuleRows=syncSurvRuleRows(ENGINE_DATA.survRuleRows||[]);persistMethodologySnapshot();}
-  _refreshHFSection();
-  showToast('Surveillance rule restored.',2500);
-}
 function buildHardFilterMethodologyHTML(E){
   const rows=getHardFilterRowsFromEngine(E);
   const coreRows=rows.filter(r=>r.kind==='core');
@@ -2555,14 +2548,6 @@ function buildHardFilterMethodologyHTML(E){
     criteria:null,removedSort:hfTotalsRemoved,rocketsSort:hfTotalsRockets,ruleKey:null,
   });
 
-  // Disabled defaults restore section
-  const disabledDefaults=SURV_DEFAULT_RULES.filter(r=>SURV_DISABLED_DEFAULTS.has(survRuleKey(r.column||r.label||'')));
-  const disabledHTML=disabledDefaults.length?`
-    <div style="margin-top:10px;padding:10px 14px;background:rgba(148,163,184,.06);border:1px solid var(--border);border-radius:8px">
-      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">Removed built-in rules — click to restore:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${disabledDefaults.map(r=>`<button onclick="restoreSurvDefaultRule('${survRuleKey(r.column||r.label||'')}')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,.3);background:rgba(99,102,241,.08);color:var(--blue);font-size:11px;cursor:pointer">+ ${escHtml(r.label||r.column)}</button>`).join('')}</div>
-    </div>`:'';
-
   const survSize=E?.survSize??0;
   const survActiveThisSession=SURV_HEADERS.length>0;
   const survMeta=survActiveThisSession
@@ -2589,7 +2574,6 @@ function buildHardFilterMethodologyHTML(E){
       <div style="overflow-x:auto">${_methTbls.hf.getHtml()}</div>
     </div>
     ${survMeta}
-    ${disabledHTML}
     ${buildSurvCorrHTML()}
   `;
 }
