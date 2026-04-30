@@ -611,6 +611,7 @@ async function pickDataFolder(){
 })();
 let NSE_BHAV={},NSE_52W={},NSE_SURV={},NSE_BULK={},NSE_BLOCK={};
 let SURV_CUSTOM_RULES=[]; // [{key,column,label,manual:true}] persistent manual REG1 columns
+let SURV_FILE_RULES=[]; // [{key,column,label,manual:false}] — populated from actual REG1 file in parseSurv; replaces SURV_DEFAULT_RULES
 let SURV_HEADERS=[]; // exact REG1 headers loaded this session
 let SURV_RULE_HITS={}; // {ruleKey -> flagged symbol count} before hard filters
 let SURV_ALL_HITS={}; // {sym -> {colName: true}} — ALL columns flagged, not just active rules
@@ -857,7 +858,9 @@ const SURV_DEFAULT_RULES=[
   {column:'High low price variation greater than 150perc in previous 12 months',label:'HL >150% (12m)'},
 ];
 function getSurvRules(){
-  const merged=[...SURV_DEFAULT_RULES,...(SURV_CUSTOM_RULES||[])];
+  // Use file-derived rules when a REG1 file has been loaded; otherwise fall back to the hardcoded default list
+  const baseRules=SURV_FILE_RULES&&SURV_FILE_RULES.length>0?SURV_FILE_RULES:SURV_DEFAULT_RULES;
+  const merged=[...baseRules,...(SURV_CUSTOM_RULES||[])];
   const seen=new Set();
   return merged.map(rule=>{
     const column=String(rule.column||rule.label||'').trim();
@@ -1020,13 +1023,23 @@ function parseSurv(text){
   const _survNonFlag=new Set(['scripcode','symbol','nse exclusive','status','series']);
   const dataHdrs=hdrs.filter(h=>{const hl=h.trim().toLowerCase();return !_survNonFlag.has(hl)&&!/^filler/i.test(h.trim());});
   // Build active rules from actual file columns — always up to date regardless of column name changes
-  // Merge with any user-added custom rules (which may target specific columns for the HF table display)
   const fileRuleKeys=new Set();
   const activeRules=dataHdrs.map(h=>({key:survRuleKey(h),column:h,label:h,header:h,manual:false}))
     .filter(r=>{if(fileRuleKeys.has(r.key))return false;fileRuleKeys.add(r.key);return true;});
-  // Add custom user rules (for Methodology HF table management) — dedup against file rules
-  getSurvRules().filter(r=>r.manual&&!fileRuleKeys.has(r.key)).forEach(r=>{
-    activeRules.push({...r,header:hdrMap[r.column.toLowerCase()]||null});
+  // Publish file-derived rules to SURV_FILE_RULES so getSurvRules() and all consumers use actual file columns
+  SURV_FILE_RULES=activeRules.map(r=>({key:r.key,column:r.column,label:r.label,manual:false}));
+  // Add custom user rules — dedup against file rules by exact key
+  // If a custom rule's column was renamed in the REG1 file, try to match it by key against current file columns
+  SURV_CUSTOM_RULES.filter(r=>r.manual).forEach(r=>{
+    if(fileRuleKeys.has(r.key)) return; // already covered by file rule with same key
+    // Fuzzy: if the normalized key matches a file header, update the stored column name to the current header
+    const matchedHdr=dataHdrs.find(h=>survRuleKey(h)===r.key);
+    if(matchedHdr){
+      r.column=matchedHdr; r.label=matchedHdr; // silently update to current column name
+      fileRuleKeys.add(r.key); // treat as matched — don't add as separate orphan rule
+    } else {
+      activeRules.push({...r,header:hdrMap[r.column.toLowerCase()]||null});
+    }
   });
   activeRules.forEach(rule=>{SURV_RULE_HITS[rule.key]=0;});
   rows.forEach(r=>{
@@ -2338,7 +2351,8 @@ function removeSurvRule(key){
 function buildHardFilterMethodologyHTML(E){
   const rows=getHardFilterRowsFromEngine(E);
   const totalRemoved=rows.reduce((sum,row)=>sum+(row.active&&row.removed!=null?row.removed:0),0);
-  const addedRuleKeys=new Set((SURV_CUSTOM_RULES||[]).map(r=>survRuleKey(r.column||r.label)));
+  // Exclude columns already active (either from file rules or custom rules) from the add-rule datalist
+  const addedRuleKeys=new Set(getSurvRules().map(r=>r.key));
   const availableCols=(SURV_HEADERS||[]).filter(h=>!addedRuleKeys.has(survRuleKey(h)));
   const datalistHtml=availableCols.map(col=>`<option value="${escHtml(col)}"></option>`).join('');
   const hfRows=rows.map(row=>({
