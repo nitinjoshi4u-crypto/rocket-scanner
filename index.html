@@ -2342,9 +2342,13 @@ function removeSurvRule(key){
 function buildHardFilterMethodologyHTML(E){
   const rows=getHardFilterRowsFromEngine(E);
   const totalRemoved=rows.reduce((sum,row)=>sum+((row.active||row.missing)&&row.removed!=null?row.removed:0),0);
-  // Exclude columns already active (either from file rules or custom rules) from the add-rule datalist
+  // Datalist: only real surveillance columns (SURV_FILE_RULES, already filtered of identity/filler cols),
+  // excluding those already configured in the HF table
   const addedRuleKeys=new Set(getSurvRules().map(r=>r.key));
-  const availableCols=(SURV_HEADERS||[]).filter(h=>!addedRuleKeys.has(survRuleKey(h)));
+  const availableCols=(SURV_FILE_RULES.length>0?SURV_FILE_RULES:SURV_HEADERS.filter(h=>{
+    const hl=h.trim().toLowerCase();
+    return !['scripcode','symbol','nse exclusive','status','series'].includes(hl)&&!/^filler/i.test(h.trim());
+  })).map(r=>r.column||r).filter(h=>!addedRuleKeys.has(survRuleKey(h)));
   const datalistHtml=availableCols.map(col=>`<option value="${escHtml(col)}"></option>`).join('');
   const hfRows=rows.map(row=>({
     criteria:row.criteria,
@@ -2372,9 +2376,12 @@ function buildHardFilterMethodologyHTML(E){
   ];
   _methTbls.hf=makeSortableTable('tbl-hf',hfCols,hfRows,'removedSort',-1);
   const survSize=E?.survSize??0;
-  const survMeta=survSize>0
-    ? `<div style="font-size:11px;color:var(--t3);margin-top:8px">Loaded <strong style="color:var(--t1)">${survSize}</strong> surveillance-flagged symbols from the latest REG1 file. Removed counts are primary-rule removals and don't double-count.</div>`
-    : `<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:11px;color:var(--red)">NSE REG1 data not active — surveillance rows shown for configuration only, won't filter until a REG1 file is loaded.</div>`;
+  const survActiveThisSession=SURV_HEADERS.length>0; // REG1 file actually loaded this session
+  const survMeta=survActiveThisSession
+    ? `<div style="font-size:11px;color:var(--t3);margin-top:8px">REG1 file active this session. Removed counts are primary-rule removals and don't double-count.</div>`
+    : (survSize>0
+      ? `<div style="font-size:11px;color:var(--amber);margin-top:8px">Showing last saved run (${survSize} flagged). Load NSE ZIP this session to refresh.</div>`
+      : `<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:11px;color:var(--red)">NSE REG1 data not active — surveillance rows shown for configuration only, won't filter until a REG1 file is loaded.</div>`);
   return `
     <h3 id="meth-filters" style="margin-top:28px">Hard Filters <span style="font-size:12px;color:var(--t3);font-weight:400">(${totalRemoved} removals in latest saved run)</span></h3>
     <p style="color:var(--t3);font-size:12px;margin-bottom:10px">Each surveillance row is an exact REG1 column. Manual rows are persisted in your brain and apply whenever that column is flagged.</p>
