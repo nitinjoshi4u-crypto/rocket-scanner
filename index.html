@@ -3749,7 +3749,7 @@ function nseDate(){
 function setMsg(m){document.getElementById('ldMsg').textContent=m;}
 
 async function processFiles(files){
-  NSE_BHAV={};NSE_52W={};NSE_SURV={};NSE_BULK={};NSE_BLOCK={};SELECTED=new Set();
+  NSE_BHAV={};NSE_52W={};NSE_SURV={};NSE_BULK={};NSE_BLOCK={};
   let tvFile=null,nseZip=null,holdFile=null,posFile=null,ordFile=null,tbFile=null;
   for(const f of files){
     if(f.name.toLowerCase().endsWith('.zip')||f.name.toLowerCase().includes('.zip')){nseZip=nseZip||f;continue;}
