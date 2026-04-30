@@ -3741,6 +3741,8 @@ async function hydrateSessionCSVsFromWorkspace(){
     }
   }
   if(Object.keys(updates).length) FS.setMultiple(updates);
+  // Recompute missed opportunities with fresh Orders + ALL (if available) and persist to brain
+  try{computeMissedOpp();}catch(e){}
 }
 
 // ── Tradebook Parser & Adaptive Stats ──
