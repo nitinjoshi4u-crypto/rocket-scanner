@@ -337,6 +337,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 <script>
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
+let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let SCORE_MAP={}; // {symbol → rocketScore} for ALL parsed stocks including filtered-out ones
 let PERF_REGIME_FILTER='all'; // 'all' | 'bull' | 'bear' | 'neutral'
 let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
@@ -1669,6 +1670,8 @@ function sumChargeParts(parts){
 }
 
 function computeLatestOrderBooked(){
+  // Only compute from orders loaded this session — never from brain-restored stale orders.
+  if(!ORDERS_TODAY?._loadedThisSession) return null;
   const session=getLatestOrderSession();
   if(!session) return null;
   const bySym={};
@@ -1818,7 +1821,13 @@ function renderStats(){
       <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${booked.total>=0?'var(--green)':'var(--red)'}">${booked.total>=0?'+':'−'}₹${Math.round(Math.abs(booked.total)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
   }
 
-  document.getElementById('statsBar').innerHTML=`
+  // Stale-data banner: shown when ALL is brain-restored, not from a live TV CSV upload
+  const staleBanner=_tvLoadedThisSession?'':
+    `<div style="grid-column:1/-1;padding:7px 14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);border-radius:8px;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:8px">
+      <span>📦</span><span>Showing last saved scan — upload <strong>ALL NSE.csv</strong> to get live scores and buy signals.</span>
+    </div>`;
+
+  document.getElementById('statsBar').innerHTML=`${staleBanner}
     <div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span></div></div>
     <div class="st"><div class="st-l">S-Tier Rockets</div><div class="st-v" style="color:#fb923c">${sc}</div><div class="st-d">${ac} A-tier strong</div></div>
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
@@ -3562,6 +3571,7 @@ async function hydrateSessionCSVsFromWorkspace(){
   }
   if(ordFile?.text){
     ORDERS_TODAY=parseOrders(ordFile.text);
+    if(ORDERS_TODAY) ORDERS_TODAY._loadedThisSession=true;
     updates[ORDERS_STORE]={orders:ORDERS_TODAY,sourcePath:ordFile.path,lastModified:ordFile.lastModified};
   }
   if(tbFile?.text){
@@ -4063,6 +4073,7 @@ async function processFiles(files){
     document.getElementById('dash').style.display='block';
     document.getElementById('hdrR').style.display='flex';
     document.getElementById('noDataBanner').style.display='none';
+    _tvLoadedThisSession=true;
     document.getElementById('fileTag').textContent=tvFile.name+' · '+raw.length+' stocks';
     const _nowIst=new Date(Date.now()+5.5*3600000);
     const _ts=_nowIst.toISOString().replace('T',' ').slice(0,16)+' IST';
@@ -4104,6 +4115,7 @@ async function processFiles(files){
     if(ordSlot){ordSlot.textContent='🧾 '+ordFile.name;ordSlot.classList.add('ok');}
     const ordText=await ordFile.text();
     ORDERS_TODAY=parseOrders(ordText);
+    if(ORDERS_TODAY) ORDERS_TODAY._loadedThisSession=true;
     try{FS.set(ORDERS_STORE,{orders:ORDERS_TODAY,sourcePath:ordFile.name,lastModified:ordFile.lastModified});}catch(e){}
   }
   if(tbFile){
