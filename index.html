@@ -3016,11 +3016,25 @@ function renderTable(){
     const isSelected=SELECTED.has(s.symbol);
     const am=allocMap[s.symbol];
 
+    // ── Buy-readiness signal ──
+    // Green  = price ≤ VWAP + 0.5×ATR  (at/below VWAP — prime entry zone)
+    // Amber  = price ≤ VWAP + 1.0×ATR  (slightly extended but acceptable)
+    // (none) = price > VWAP + 1.0×ATR  (has run, wait for pullback)
+    // Requires VWAP from NSE bhav data; falls back gracefully when unavailable.
+    const _brs=(()=>{
+      const p=s.price, v=s.vwap, a=s.atr;
+      if(!p||!v||v<=0) return null;
+      const atrAbs=a>0?p*a/100:0; // ATR% → price units
+      if(p<=v+0.5*atrAbs) return {label:'● BUY ZONE',color:'var(--green)',tip:`Price ≤ VWAP+0.5×ATR (VWAP ₹${fmt(v)}). Prime entry — at or below VWAP.`};
+      if(p<=v+1.0*atrAbs) return {label:'◐ NEAR',color:'var(--amber)',tip:`Price ≤ VWAP+1×ATR (VWAP ₹${fmt(v)}). Slightly extended — acceptable entry, prefer dip.`};
+      return {label:'○ WAIT',color:'var(--t3)',tip:`Price > VWAP+1×ATR (VWAP ₹${fmt(v)}). Has run — wait for pullback toward VWAP.`};
+    })();
+
     // Fixed cells
     let cells=`
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
       <td><span class="sc-m">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
-      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
+      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:${_brs?.color||'var(--t1)'}">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div>${_brs?`<div style="font-size:9px;font-weight:700;color:${_brs.color};margin-top:1px;cursor:help" title="${escHtml(_brs.tip)}">${_brs.label}</div>`:''}</td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
       <td>${fDel(s.delivPct)}</td>
