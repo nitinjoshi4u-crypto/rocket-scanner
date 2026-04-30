@@ -901,24 +901,26 @@ function sanitizeSavedMethodology(meth){
 function getHardFilterRowsFromEngine(E){
   if(!E) return [];
   const rm=E.removed||{};
+  const rk=rm.rockets||{};
   const survRows=syncSurvRuleRows(E.survRuleRows||[]);
   return [
-    {key:'upper_circuit',label:'Upper Circuit',criteria:'Price change >= 19.5%',removed:rm.uc||0,active:true,kind:'core'},
+    {key:'upper_circuit',label:'Upper Circuit',criteria:'Price change >= 19.5%',removed:rm.uc||0,rockets:[],active:true,kind:'core'},
     ...survRows.map(row=>({
       key:'surv_'+row.key,
       label:row.label+(row.manual?' (Manual)':''),
       criteria:row.column,
       removed:row.active?(row.removed||0):null,
       flagged:row.active?(row.flagged||0):0,
+      rockets:row.active?(rk.surv||[]).filter(r=>r.sym&&NSE_SURV[r.sym]&&NSE_SURV[r.sym][0]===row.column):[],
       active:!!row.active,
       manual:!!row.manual,
       kind:'surv',
       ruleKey:row.key,
     })),
-    {key:'low_liquidity',label:'Low Liquidity',criteria:'Shareholders < 500 OR Volume < 5,000',removed:rm.liq||0,active:true,kind:'core'},
-    {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,active:true,kind:'core'},
-    {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,active:true,kind:'core'},
-    {key:'fading_peak_retention',label:'Fading (Peak Retention)',criteria:'Peak retention < 50% when day range > 1%',removed:rm.fade||0,active:true,kind:'core'},
+    {key:'low_liquidity',label:'Low Liquidity',criteria:'Shareholders < 500 OR Volume < 5,000',removed:rm.liq||0,rockets:rk.liq||[],active:true,kind:'core'},
+    {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,rockets:rk.fscore||[],active:true,kind:'core'},
+    {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,rockets:rk.deliv||[],active:true,kind:'core'},
+    {key:'fading_peak_retention',label:'Fading (Peak Retention)',criteria:'Peak retention < 50% when day range > 1%',removed:rm.fade||0,rockets:rk.fade||[],active:true,kind:'core'},
   ];
 }
 function persistMethodologySnapshot(){
@@ -1214,34 +1216,62 @@ function runEngine(raw, sessionTag){
     LABELS.industry_breadth='Industry Breadth %';
   }
 
+  // ── Configurable thresholds — read early so hard filters can use rocketPct ──
+  let rocketPct=10, holdFactor=0.3;
+  try{
+    const _st=JSON.parse(localStorage.getItem(SCANNER_STORE)||'{}');
+    if(_st.rocketPct!=null&&isFinite(parseFloat(_st.rocketPct))) rocketPct=parseFloat(_st.rocketPct);
+  }catch(e){}
+  const _rEl=document.getElementById('fRocketPct');
+  if(_rEl&&_rEl.value!=='') rocketPct=parseFloat(_rEl.value)||10;
+
   // ── Hard Filters ──
-  REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0};
+  REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0,
+    rockets:{uc:[],surv:[],liq:[],fscore:[],deliv:[],fade:[]}};
   const filtered=parsed.filter(d=>{
-    // Upper circuit — stock can't be bought, invalid for scanning
     const pc=K.price_change?d[K.price_change]:null;
-    if(pc!==null&&pc>=19.5){REMOVED.uc++;return false;}
+    const sym=d.symbol;
+    // Upper circuit — stock can't be bought, invalid for scanning
+    if(pc!==null&&pc>=19.5){REMOVED.uc++;return false;} // UC stocks are excluded before rocket tracking
     // Surveillance — regulatory exclusion
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
       const primaryRule=NSE_SURV[d.symbol][0];
       if(primaryRule) REMOVED.survRules[primaryRule]=(REMOVED.survRules[primaryRule]||0)+1;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
       return false;
     }
     // Hard liquidity floor — below these thresholds stock is untradeable
     const sh=K.shareholders?d[K.shareholders]:null;
     const vol=K.volume?d[K.volume]:null;
-    if((sh!==null&&sh<500)||(vol!==null&&vol<5000)){REMOVED.liq++;return false;}
+    if((sh!==null&&sh<500)||(vol!==null&&vol<5000)){
+      REMOVED.liq++;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
+      return false;
+    }
     // Piotroski — must be > 3 (higher = better fundamentals)
     const pio=K.piotroski?d[K.piotroski]:null;
-    if(pio===null||pio<=3){REMOVED.fscore++;return false;}
+    if(pio===null||pio<=3){
+      REMOVED.fscore++;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fscore.push({sym,pc});
+      return false;
+    }
     // Delivery — null or <30% means speculative, no rockets have ever come from below 30%
     const del=d.delivery_pct;
-    if(del===null||del<30){REMOVED.deliv++;return false;}
+    if(del===null||del<30){
+      REMOVED.deliv++;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
+      return false;
+    }
     // Peak retention — stock has given back >50% of its day's range (fading)
     // Only apply when day range is meaningful (>1% of price)
     const hi1d=K.high_1d?d[K.high_1d]:null, lo1d=K.low_1d?d[K.low_1d]:null;
     if(hi1d!=null&&lo1d!=null&&lo1d>0&&(hi1d-lo1d)/lo1d>0.01){
-      if(d.peak_retention!=null&&d.peak_retention<50){REMOVED.fade++;return false;}
+      if(d.peak_retention!=null&&d.peak_retention<50){
+        REMOVED.fade++;
+        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fade.push({sym,pc});
+        return false;
+      }
     }
     return true;
   });
@@ -1261,15 +1291,6 @@ function runEngine(raw, sessionTag){
     valid.forEach((x,ri)=>{r[x.i]=ri/(valid.length-1||1);});
     return r;
   }
-  // ── Configurable thresholds (read from settings) ──
-  let rocketPct=10, holdFactor=0.3; // defaults
-  try{
-    const st=JSON.parse(localStorage.getItem(SCANNER_STORE)||'{}');
-    if(st.rocketPct!=null&&isFinite(parseFloat(st.rocketPct))) rocketPct=parseFloat(st.rocketPct);
-  }catch(e){}
-  const _rEl=document.getElementById('fRocketPct');
-  if(_rEl&&_rEl.value!=='') rocketPct=parseFloat(_rEl.value)||10;
-
   // ── Today's rockets: stocks that moved ≥X% up ──
   const ROCKET_THRESHOLD=rocketPct;
   const topSetToday=new Set();
@@ -2271,6 +2292,8 @@ function buildHardFilterMethodologyHTML(E){
     criteria:row.criteria,
     flaggedSort:row.kind==='surv'&&row.active?(row.flagged||0):-1,
     removedSort:row.active&&row.removed!=null?(row.removed||0):-1,
+    rocketsFiltered:row.rockets||[],
+    rocketsSort:(row.rockets||[]).length,
     active:row.active, kind:row.kind, manual:!!row.manual, ruleKey:row.ruleKey||'',
     inactiveNote:!row.active?(row.kind==='surv'?'Inactive — REG1 column not found in last upload':'Needs fresh NSE data'):'',
     manageSort:row.manual?1:0,
@@ -2279,6 +2302,12 @@ function buildHardFilterMethodologyHTML(E){
     {key:'criteria',label:'Filter / Column',align:'left',fmt:(v,r)=>`<span style="font-size:11px;color:${r.active?'var(--t1)':'var(--t3)'}">${escHtml(v)}${r.inactiveNote?`<div style="font-size:10px;color:${r.kind==='surv'?'var(--red)':'var(--amber)'};margin-top:2px">${r.inactiveNote}</div>`:''}</span>`},
     {key:'flaggedSort',label:'Flagged',align:'right',fmt:(v,r)=>v>=0?`<span style="color:${v>0?'var(--orange)':'var(--t3)'};font-weight:700;font-family:'DM Mono',monospace">${v.toLocaleString()}</span>`:'&mdash;'},
     {key:'removedSort',label:'Removed',align:'right',fmt:(v,r)=>v>=0?`<span style="color:${v>0?'var(--red)':'var(--t3)'};font-weight:700;font-family:'DM Mono',monospace">${v.toLocaleString()}</span>`:'&mdash;'},
+    {key:'rocketsSort',label:'🚀 Rockets Filtered',align:'left',fmt:(v,r)=>{
+      const list=r.rocketsFiltered||[];
+      if(!list.length) return '<span style="color:var(--t3);font-size:11px">—</span>';
+      const chips=list.sort((a,b)=>b.pc-a.pc).map(x=>`<span title="${escHtml(x.sym)} +${x.pc.toFixed(1)}%" style="display:inline-block;padding:1px 6px;margin:1px 2px;border-radius:4px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--red);font-size:10px;font-weight:700;font-family:'DM Mono',monospace;cursor:default">${escHtml(x.sym)} <span style="color:var(--orange)">+${x.pc.toFixed(1)}%</span></span>`).join('');
+      return `<span style="display:inline-flex;flex-wrap:wrap;gap:1px;align-items:center">${chips}</span>`;
+    }},
     {key:'manageSort',label:'Manage',align:'right',fmt:(v,r)=>r.manual?`<button onclick="removeSurvRule('${r.ruleKey}')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:var(--red);font-size:10px;font-weight:700;cursor:pointer">Remove</button>`:`<span style="color:var(--t3);font-size:10px">${r.kind==='surv'?'Built-in':'Core'}</span>`},
   ];
   _methTbls.hf=makeSortableTable('tbl-hf',hfCols,hfRows,'removedSort',-1);
