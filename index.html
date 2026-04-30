@@ -2461,6 +2461,7 @@ function buildHardFilterMethodologyHTML(E){
       <div style="overflow-x:auto">${_methTbls.hf.getHtml()}</div>
     </div>
     ${survMeta}
+    ${buildSurvHeldFlaggedHTML()}
     ${buildSurvCorrHTML()}
   `;
 }
@@ -2510,6 +2511,61 @@ function updateSurvCorrelation(){
     updated=true;
   });
   if(updated) FS.set(SURV_CORR_STORE,SURV_CORR_ACC);
+}
+
+function buildSurvHeldFlaggedHTML(){
+  // Build full set of held symbols: HOLDINGS (qty>0) + today's net buys from ORDERS_TODAY
+  const heldSyms=new Set();
+  if(HOLDINGS?.length) HOLDINGS.forEach(h=>{if(h?.symbol&&h.qty>0) heldSyms.add(h.symbol);});
+  if(ORDERS_TODAY?.length){
+    const todayDate=getSessionDate();
+    const ordBuys={},ordSells={};
+    ORDERS_TODAY.forEach(o=>{
+      if(normOrderDate(o.time)!==todayDate||!o.symbol) return;
+      const t=(o.type||'').toUpperCase();
+      if(t==='BUY') ordBuys[o.symbol]=(ordBuys[o.symbol]||0)+o.qty;
+      else if(t==='SELL') ordSells[o.symbol]=(ordSells[o.symbol]||0)+o.qty;
+    });
+    Object.entries(ordBuys).forEach(([sym,bQty])=>{if(bQty-(ordSells[sym]||0)>0) heldSyms.add(sym);});
+  }
+  if(!heldSyms.size) return '';
+
+  // Find held symbols that appear in NSE_SURV
+  const flagged=[];
+  heldSyms.forEach(sym=>{
+    const rules=NSE_SURV[sym];
+    if(!rules||!rules.length) return;
+    const ltp=ALL.find(s=>s.symbol===sym)?.price||(POSITIONS?.find(p=>p.symbol===sym)?.ltp)||(HOLDINGS?.find(h=>h.symbol===sym)?.ltp)||null;
+    const avg=HOLD_COST_MAP[sym]??HOLDINGS?.find(h=>h.symbol===sym)?.avgCost??null;
+    const pnlPct=(ltp&&avg&&avg>0)?+(((ltp-avg)/avg)*100).toFixed(2):null;
+    const ruleLabels=rules.map(k=>{const r=getSurvRules().find(r=>r.key===k);return r?r.label:k;});
+    flagged.push({sym,pnlPct,rules:ruleLabels});
+  });
+
+  if(!flagged.length) return '';
+
+  flagged.sort((a,b)=>(a.pnlPct??Infinity)-(b.pnlPct??Infinity));
+  const rows=flagged.map(f=>`
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--amber)">${escHtml(f.sym)}</td>
+      <td style="padding:7px 12px;font-family:'DM Mono',monospace;color:${f.pnlPct==null?'var(--t3)':f.pnlPct>=0?'var(--green)':'var(--red)'};font-weight:700">${f.pnlPct!=null?(f.pnlPct>=0?'+':'')+f.pnlPct.toFixed(2)+'%':'—'}</td>
+      <td style="padding:7px 12px;font-size:11px;color:var(--red)">${f.rules.map(r=>escHtml(r)).join(' · ')}</td>
+    </tr>`).join('');
+  return `
+    <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:10px;overflow:hidden;margin-bottom:14px">
+      <div style="padding:10px 14px;border-bottom:1px solid rgba(239,68,68,.2);display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;font-weight:700;color:var(--red)">⚠ Surveillance — Held Positions</span>
+        <span style="font-size:11px;color:var(--t3)">${flagged.length} of your held/bought stocks are on the NSE surveillance list</span>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--t3);font-size:10px;text-transform:uppercase;letter-spacing:.7px">
+          <th style="padding:7px 12px;text-align:left;font-weight:600">Symbol</th>
+          <th style="padding:7px 12px;text-align:left;font-weight:600">Unrealised P&L%</th>
+          <th style="padding:7px 12px;text-align:left;font-weight:600">Surveillance Flags</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
 }
 
 function buildSurvCorrHTML(){
