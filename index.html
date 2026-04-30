@@ -311,7 +311,6 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl">Max 1D %</span><input type="number" id="fMax1D" placeholder="e.g. 19" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" value="240" placeholder="240" min="10" max="9999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this. Default 240."></div>
-   <div class="fg"><span class="fg-lbl">Min Holders</span><input type="number" id="fSh" placeholder="e.g. 10000" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Capital ₹</span><input type="number" id="fCapital" placeholder="e.g. 100000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
@@ -1296,7 +1295,7 @@ function runEngine(raw, sessionTag){
     // Hard liquidity floor — below these thresholds stock is untradeable
     const sh=K.shareholders?d[K.shareholders]:null;
     const vol=K.volume?d[K.volume]:null;
-    if((sh!==null&&sh<500)||(vol!==null&&vol<5000)){
+    if((sh!==null&&sh<10000)||(vol!==null&&vol<5000)){
       REMOVED.liq++;
       if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
       return false;
@@ -1831,22 +1830,17 @@ function renderStats(){
       <span>📦</span><span>Showing last saved scan — upload <strong>ALL NSE.csv</strong> to get live scores and buy signals.</span>
     </div>`;
 
-  // Top Pick card — #1 stock in FILT by score
-  const topPick=FILT[0]||ALL[0]||null;
-  const topPickCard=topPick?`<div class="st"><div class="st-l">Top Pick</div><div class="st-v" style="font-size:18px;color:var(--amber);letter-spacing:-.3px">${topPick.symbol}</div><div class="st-d">${topPick.rocketScore.toFixed(1)} score · <span style="color:${(topPick.priceChange||0)>=0?'var(--green)':'var(--red)'}">${(topPick.priceChange||0)>=0?'+':''}${(topPick.priceChange||0).toFixed(1)}%</span>${topPick.sector?` · ${topPick.sector}`:''}</div></div>`:'';
-
-  // Edge card — tradebook win rate + R:R
-  const edgeCard=(()=>{
-    if(!TRADEBOOK_STATS) return '';
-    const wr=TRADEBOOK_STATS.winRate,rr=TRADEBOOK_STATS.riskReward,lots=TRADEBOOK_STATS.roundTrips;
-    const wrColor=wr>=60?'var(--green)':wr>=45?'var(--amber)':'var(--red)';
-    return `<div class="st"><div class="st-l">Edge</div><div class="st-v" style="color:${wrColor}">${wr.toFixed(0)}%</div><div class="st-d">win rate · R:R ${rr.toFixed(2)} · ${lots} lots</div></div>`;
+  // SL/TGT card — from tradebook adaptive values
+  const slTgtCard=(()=>{
+    if(!TRADEBOOK_STATS?.adaptiveSL) return '';
+    const _sl=TRADEBOOK_STATS.adaptiveSL.toFixed(1),_tgt=TRADEBOOK_STATS.adaptiveTGT.toFixed(1);
+    const rr=(TRADEBOOK_STATS.adaptiveTGT/TRADEBOOK_STATS.adaptiveSL).toFixed(2);
+    return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · tradebook-derived</div></div>`;
   })();
 
   document.getElementById('statsBar').innerHTML=`${staleBanner}
     <div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span></div></div>
-    ${topPickCard}
-    ${edgeCard}
+    ${slTgtCard}
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
     <div class="st"><div class="st-l">Top Sector</div><div class="st-v" style="font-size:15px;color:var(--green)">${topSec}</div><div class="st-d">${topSecPct.toFixed(0)}% advancing</div></div>
     <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${ENGINE_DATA?.rocketThreshold||10}%${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''} ${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
@@ -1900,15 +1894,10 @@ function renderStats(){
       const moCount=moAll.length;
       if(moCount>0){
         const moAvg=moAll.reduce((s,m)=>s+m.missed,0)/moCount;
-        const moAdj=+Math.min(moAvg*0.25,2).toFixed(2);
-        infoPills.push(`<span class="info-pill pill-amber" title="Across ${moDates} sell date(s): stocks where day high exceeded sell price. TGT nudged by 25% of avg missed gain (max 2%).">🎯 ${moCount} missed opportunit${moCount===1?'y':'ies'} across ${moDates} days · avg +${moAvg.toFixed(2)}% left · TGT nudged +${moAdj.toFixed(2)}%</span>`);
+        infoPills.push(`<span class="info-pill pill-amber" title="Across ${moDates} sell date(s): stocks where day high exceeded your sell price — gain left on table.">🎯 ${moCount} missed opportunit${moCount===1?'y':'ies'} across ${moDates} days · avg +${moAvg.toFixed(2)}% left on table</span>`);
       }
     }
   }catch(e){}
-  if(TRADEBOOK_STATS?.adaptiveSL){
-    const _sl=TRADEBOOK_STATS.adaptiveSL.toFixed(1),_tgt=TRADEBOOK_STATS.adaptiveTGT.toFixed(1);
-    infoPills.push(`<span class="info-pill" style="background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:var(--t2)" title="Derived from tradebook: SL = median net loss%, TGT = 75th percentile net win%">📐 SL ${_sl}% · TGT ${_tgt}%</span>`);
-  }
 
   // Update surveillance P&L correlation accumulator if both data sources are ready
   if(HOLDINGS?.length&&Object.keys(SURV_ALL_HITS).length) try{updateSurvCorrelation();}catch(e){}
@@ -3193,7 +3182,6 @@ function toggleBuyZoneFilter(){
 function applyFilters(){
   const minScore=parseFloat(document.getElementById('fMinScore')?.value)||0;
   const fvol=parseFloat(document.getElementById('fVol')?.value)||0;
-  const fsh=parseFloat(document.getElementById('fSh')?.value)||0;
   const _fMin1Dv=document.getElementById('fMin1D')?.value||'';
   const _fMax1Dv=document.getElementById('fMax1D')?.value||'';
   const fMin1D=_fMin1Dv!==''?parseFloat(_fMin1Dv):-Infinity;
@@ -3204,7 +3192,6 @@ function applyFilters(){
   FILT=ALL.filter(x=>{
     if(minScore>0&&x.rocketScore<minScore) return false;
     if(fvol>0){if((x.volume||0)<fvol)return false;}
-    if(fsh>0){if(x.shareholders===null||x.shareholders<fsh)return false;}
     if(fMin1D>-Infinity){if(x.priceChange===null||x.priceChange<fMin1D)return false;}
     if(fMax1D<Infinity){if(x.priceChange!==null&&x.priceChange>fMax1D)return false;}
     if(fPriceMin>0&&(x.price||0)<fPriceMin)return false;
@@ -3305,7 +3292,6 @@ function renderStatusBar(){
   const minScore2=parseFloat(document.getElementById('fMinScore')?.value)||0;
   const fscore=4;
   const fvol2=parseFloat(document.getElementById('fVol')?.value)||0;
-  const fsh=parseFloat(document.getElementById('fSh')?.value)||0;
   const _fMin1Dv2=document.getElementById('fMin1D')?.value||'';
   const _fMax1Dv2=document.getElementById('fMax1D')?.value||'';
   const fMin1D=_fMin1Dv2!==''?parseFloat(_fMin1Dv2):-Infinity;
@@ -3315,7 +3301,6 @@ function renderStatusBar(){
   if(fMin1D>-Infinity)tags.push('1D≥'+fMin1D+'%');
   if(fMax1D<Infinity)tags.push('1D≤'+fMax1D+'%');
   if(fvol2>0){const n=fvol2;tags.push('Vol≥'+(n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n));}
-  if(fsh>0){const n=fsh;tags.push('Holders≥'+(n>=1e5?(n/1e5)+'L':n>=1e3?(n/1e3)+'K':n));}
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
   const isFiltered=tags.length>0||shown<total;
   const countColor=shown<total?'var(--fire)':'var(--green)';
@@ -3353,7 +3338,7 @@ function renderStatusBar(){
 }
 
 function clearFilters(){
-  ['fMinScore','fSh','fMin1D','fMax1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fMinScore','fMin1D','fMax1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='70';
@@ -4410,7 +4395,6 @@ function saveFilterState(){
     priceMax:document.getElementById('fPriceMax')?.value||'',
     fvol:VOL_AUTO?'':document.getElementById('fVol')?.value||'',
     volMult:document.getElementById('fVolMult')?.value||'240',
-    fsh:document.getElementById('fSh')?.value||'',
     fMin1D:document.getElementById('fMin1D')?.value||'',
     fMax1D:document.getElementById('fMax1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
@@ -4431,7 +4415,6 @@ function loadFilterState(){
     if(state.minScore){const el=document.getElementById('fMinScore');if(el)el.value=state.minScore;}
     if(state.priceMin){const el=document.getElementById('fPriceMin');if(el)el.value=state.priceMin;}
     if(state.priceMax){const el=document.getElementById('fPriceMax');if(el)el.value=state.priceMax;}
-    if(state.fsh){const el=document.getElementById('fSh');if(el)el.value=state.fsh;}
     if(state.fMin1D){const el=document.getElementById('fMin1D');if(el)el.value=state.fMin1D;}
     if(state.fMax1D){const el=document.getElementById('fMax1D');if(el)el.value=state.fMax1D;}
     if(state.capital){const el=document.getElementById('fCapital');if(el)el.value=state.capital;}
