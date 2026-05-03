@@ -230,7 +230,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 <div class="hdr">
  <div class="brand">
   <div class="brand-ico">🚀</div>
-  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div id="lastScanTag" style="display:none;font-size:11px;color:var(--t2);margin-top:1px;font-weight:500"><span id="lastScanVal"></span></div></div>
+  <div><h1>Rocket <em>Scanner</em> <span id="verLabel"></span></h1><div class="brand-tag">Regime-Adaptive mRMR + Sector Intelligence</div><div id="lastScanTag" style="font-size:11px;color:var(--t2);margin-top:1px;font-weight:500"><span id="lastScanVal"></span></div></div>
  </div>
  <div class="hdr-r" id="hdrR">
 
@@ -338,6 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
+const BUILD_TS='2026-05-03 11:29 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -671,6 +672,9 @@ const CODE_HASH=(function(){let h=0;const s=document.querySelector('script:not([
     const lbl=document.getElementById('verLabel');
     if(lbl) lbl.textContent='v5';
   }
+  // Show build/push timestamp
+  const _bsEl=document.getElementById('lastScanVal');
+  if(_bsEl) _bsEl.textContent=BUILD_TS?'Last updated: '+BUILD_TS:'';
 })();
 
 // ── Go to top button ──
@@ -4400,7 +4404,6 @@ async function processFiles(files){
     document.getElementById('fileTag').textContent=tvFile.name+' · '+raw.length+' stocks';
     const _nowIst=new Date(Date.now()+5.5*3600000);
     const _ts=_nowIst.toISOString().replace('T',' ').slice(0,16)+' IST';
-    const _stEl=document.getElementById('lastScanTag');const _svEl=document.getElementById('lastScanVal');if(_stEl&&_svEl){_svEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}
     // Auto-select all stocks by default on fresh upload
     SELECTED=new Set(ALL.map(s=>s.symbol));
     renderMethodology();loadFilterState();setAutoVolume();applyFilters();updateTabCounts();
@@ -4517,7 +4520,7 @@ async function initApp(){
         FILT=[...ALL];
         SELECTED=new Set(ALL.map(s=>s.symbol));
         if(saved.fileTag){const ft=document.getElementById('fileTag');if(ft)ft.textContent=saved.fileTag;}
-        if(saved.ts){const _ist=new Date(saved.ts+5.5*3600000);const _ts=_ist.toISOString().replace('T',' ').slice(0,16)+' IST';const _stEl=document.getElementById('lastScanTag');const _svEl=document.getElementById('lastScanVal');if(_stEl&&_svEl){_svEl.textContent='Last scan: '+_ts;_stEl.style.display='block';}
+        if(saved.ts){const _ist=new Date(saved.ts+5.5*3600000);
           // Track the saved scan date so the stale banner can check if it's from today
           _scanSavedDate=_ist.toISOString().slice(0,10);
         }
@@ -4801,3 +4804,5 @@ initNSELinks();
 </script>
 </body>
 </html>
+
+
