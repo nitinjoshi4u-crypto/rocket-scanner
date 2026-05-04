@@ -338,7 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-04 13:11 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-04 14:50 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -4328,17 +4328,7 @@ async function processFiles(files){
     const fname = tvFile.name.toLowerCase();
     const isFullScannerCSV = fname.includes('all nse');
     if(!isFullScannerCSV){
-      // Tracker price update — silently update tracker, skip scanner
-      // Tracker removed — non-scanner CSVs are no longer processed
-      setMsg('Not a scanner CSV (expected "ALL NSE" in filename). Skipping...');
       console.warn('Non-scanner CSV ignored:', tvFile.name);
-      document.getElementById('ldSt').classList.remove('on');
-      if(ALL.length>0){
-        document.getElementById('dash').style.display='block';
-        document.getElementById('hdrR').style.display='flex';
-      } else {
-        document.getElementById('uplSec').style.display='block';
-      }
     } else {
     setMsg('Running mRMR engine across '+(raw.length)+' stocks...');
     await new Promise(r=>setTimeout(r,60));
@@ -4387,18 +4377,7 @@ async function processFiles(files){
       }
     }
     FILT=[...ALL];
-    document.getElementById('ldSt').classList.remove('on');
-    document.getElementById('dash').style.display='block';
-    document.getElementById('hdrR').style.display='flex';
-    document.getElementById('noDataBanner').style.display='none';
     _tvLoadedThisSession=true;
-    document.getElementById('fileTag').textContent=tvFile.name+' · '+raw.length+' stocks';
-    const _nowIst=new Date(Date.now()+5.5*3600000);
-    const _ts=_nowIst.toISOString().replace('T',' ').slice(0,16)+' IST';
-    // Auto-select all stocks by default on fresh upload
-    SELECTED=new Set(ALL.map(s=>s.symbol));
-    renderMethodology();loadFilterState();setAutoVolume();applyFilters();updateTabCounts();
-    showBrainPrompt();
     } // end isFullScannerCSV else
   } else if(!holdFile&&!posFile&&!ordFile&&!tbFile){
     document.getElementById('ldSt').classList.remove('on');
@@ -4793,6 +4772,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
