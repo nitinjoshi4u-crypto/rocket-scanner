@@ -338,7 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-03 11:29 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-04 09:42 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1871,15 +1871,6 @@ function renderStats(){
       <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${booked.total>=0?'var(--green)':'var(--red)'}">${booked.total>=0?'+':'−'}₹${Math.round(Math.abs(booked.total)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
   }
 
-  // Stale-data banner: shown when scan is brain-restored AND from a previous calendar day.
-  // Uses actual IST calendar date — getSessionDate() rolls over post-16:00 and would falsely show the banner after market close.
-  const _istToday=(()=>{const {dateMs}=istNow();const d=new Date(dateMs);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;})();
-  const _scanIsToday=_scanSavedDate===_istToday;
-  const staleBanner=(_tvLoadedThisSession||_scanIsToday)?'':
-    `<div style="grid-column:1/-1;padding:7px 14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);border-radius:8px;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:8px">
-      <span>📦</span><span>Showing last saved scan — upload <strong>ALL NSE.csv</strong> to get live scores and buy signals.</span>
-    </div>`;
-
   // SL/TGT card — from tradebook adaptive values
   const slTgtCard=(()=>{
     if(!TRADEBOOK_STATS?.adaptiveSL) return '';
@@ -1888,7 +1879,7 @@ function renderStats(){
     return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · tradebook-derived</div></div>`;
   })();
 
-  document.getElementById('statsBar').innerHTML=`${staleBanner}
+  document.getElementById('statsBar').innerHTML=`
     <div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span></div></div>
     ${slTgtCard}
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
@@ -4456,10 +4447,8 @@ async function processFiles(files){
   // applyFilters() re-runs held-stock suppression with fresh holdings data only when
   // holdings/positions were updated (avoids double render lag when TV CSV was also uploaded).
   computeMissedOpp();
-  if(ALL.length){
-    renderPerformance();renderStats();
-    if(holdFile||posFile) applyFilters();
-  }
+  renderPerformance();renderStats();
+  if(ALL.length&&(holdFile||posFile)) applyFilters();
   setMsg('');
 }
 
@@ -4645,16 +4634,16 @@ async function initApp(){
   // Step 5b: Set auto volume (must be after loadFilterState so fVolMult is restored first)
   try{setAutoVolume();}catch(e){}
 
-  // Step 6: Apply filters and render table — runs once, cleanly, with all filters restored
-  _initInProgress=false;
-  try{applyFilters();}catch(e){console.error('INIT step6 applyFilters failed:',e);}
-
-  // Step 8: Show header + dash; toggle no-data banner
+  // Step 6: Show header + dash before applyFilters so renderTable works into a visible element
   try{
     document.getElementById('hdrR').style.display='flex';
     document.getElementById('dash').style.display='block';
     document.getElementById('noDataBanner').style.display=ALL.length?'none':'flex';
-  }catch(e){console.error('INIT step8 visibility failed:',e);}
+  }catch(e){console.error('INIT step6 visibility failed:',e);}
+
+  // Step 7: Apply filters and render table — runs once, cleanly, with all filters restored
+  _initInProgress=false;
+  try{applyFilters();}catch(e){console.error('INIT step7 applyFilters failed:',e);}
 }
 initApp();
 
@@ -4804,5 +4793,6 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
