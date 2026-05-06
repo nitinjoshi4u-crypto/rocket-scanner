@@ -338,7 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-06 08:33 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-06 15:04 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3149,11 +3149,12 @@ function getMissedOppNudge(){
 
 function getEffectiveTgtPct(){
   const nudge=getMissedOppNudge();
-  if(TRADEBOOK_STATS && TRADEBOOK_STATS.adaptiveTGT > 0) return TRADEBOOK_STATS.adaptiveTGT + nudge;
+  const round05=v=>+(Math.round(v/0.05)*0.05).toFixed(2);
+  if(TRADEBOOK_STATS && TRADEBOOK_STATS.adaptiveTGT > 0) return round05(TRADEBOOK_STATS.adaptiveTGT + nudge);
   const vals = (typeof FILT !== 'undefined' ? FILT : []).map(s => s.tgtPct).filter(v => v != null && isFinite(v) && v > 0);
   if(!vals.length) return null;
   vals.sort((a,b)=>a-b);
-  return vals[Math.floor(vals.length/2)] + nudge;
+  return round05(vals[Math.floor(vals.length/2)] + nudge);
 }
 
 function computeAlloc(capital, selList){
@@ -4010,8 +4011,8 @@ function parseTradebook(text){
   const avgHoldDays=meanArr(roundTrips.map(r=>r.holdDays));
   const avgCapital=meanArr(roundTrips.map(r=>r.capital));
 
-  const adaptiveSL=+Math.abs(medianLossPct).toFixed(2);
-  const adaptiveTGT=+Math.abs(p75Win).toFixed(2);
+  const adaptiveSL=+(Math.round(Math.abs(medianLossPct)/0.05)*0.05).toFixed(2);
+  const adaptiveTGT=+(Math.round(Math.abs(p75Win)/0.05)*0.05).toFixed(2);
   const minExitPct=+Math.max(1,medianWinPct).toFixed(2);
 
   const stats={
@@ -4795,6 +4796,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
