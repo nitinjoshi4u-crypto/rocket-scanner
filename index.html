@@ -338,7 +338,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-04 15:32 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-06 07:56 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1690,10 +1690,18 @@ function runEngine(raw, sessionTag){
 // ── Rendering ──
 function getHoldingAvgCost(symbol){
   if(!symbol) return null;
+  // 1. Holdings.csv cost map (most accurate — Zerodha settled avg)
   if(HOLD_COST_MAP[symbol]!=null) return HOLD_COST_MAP[symbol];
-  if(!HOLDINGS_ALL||!HOLDINGS_ALL.length) return null;
-  const hrow=HOLDINGS_ALL.find(h=>h.symbol===symbol&&h.avgCost!=null);
-  return hrow?.avgCost??null;
+  // 2. Holdings.csv all rows (includes qty=0 closed positions)
+  const hrow=HOLDINGS_ALL?.find(h=>h.symbol===symbol&&h.avgCost!=null);
+  if(hrow?.avgCost!=null) return hrow.avgCost;
+  // 3. Positions.csv (T+1 unsettled — one day lag acceptable)
+  const prow=POSITIONS?.find(p=>p.symbol===symbol&&p.avg!=null);
+  if(prow?.avg!=null) return prow.avg;
+  // 4. Tradebook FIFO open legs (one day late but covers older positions)
+  const tbAvg=TRADEBOOK_STATS?.openAvgCostMap?.[symbol];
+  if(tbAvg!=null) return tbAvg;
+  return null;
 }
 
 // Module-level helper: normalise Zerodha order timestamp to YYYY-MM-DD
@@ -3946,6 +3954,7 @@ function parseTradebook(text){
 
   // FIFO matching per symbol — only closed round trips
   const roundTrips=[];
+  const openAvgCostMap={}; // {symbol: avgCost} — unmatched buy legs (open positions)
   Object.entries(bySymbol).forEach(([sym,trades])=>{
     trades.sort((a,b)=>a.time.localeCompare(b.time));
     const buyQueue=[];
@@ -3966,6 +3975,11 @@ function parseTradebook(text){
           if(b.qty<=0) buyQueue.shift();
         }
       }
+    }
+    // Remaining unmatched buys = open position; compute qty-weighted avg cost
+    if(buyQueue.length){
+      const totalQty=buyQueue.reduce((s,b)=>s+b.qty,0);
+      if(totalQty>0) openAvgCostMap[sym]=+(buyQueue.reduce((s,b)=>s+b.price*b.qty,0)/totalQty).toFixed(2);
     }
   });
 
@@ -4000,7 +4014,8 @@ function parseTradebook(text){
     p75Win:+p75Win.toFixed(2), p25Loss:+p25Loss.toFixed(2),
     avgHoldDays:+avgHoldDays.toFixed(1), avgCapital:+Math.round(avgCapital),
     adaptiveSL, adaptiveTGT, minExitPct,
-    riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2)
+    riskReward:+Math.abs(avgWinPct/avgLossPct).toFixed(2),
+    openAvgCostMap, // {symbol: avgCost} from unmatched FIFO buy legs
   };
 
   // Add netPnl (with charges) per trip and store full array for renderPerformance.
@@ -4772,6 +4787,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
