@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-07 11:28 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-07 12:10 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2466,13 +2466,11 @@ function renderPerformance(){
   const regimePills=['all','bull','bear','neutral'].map(r=>{
     const active=PERF_REGIME_FILTER===r;
     const label=r==='all'?'All':r==='bull'?'🐂 Bull':r==='bear'?'🐻 Bear':'➡ Neutral';
-    const cnt=r==='all'?_totalObs:(_rs[r]||0);
-    const cntLabel=` (${cnt} obs)`;
     const col=r==='bull'?'var(--green)':r==='bear'?'var(--red)':r==='neutral'?'var(--orange)':'var(--t2)';
     const bg=active?(r==='bull'?'rgba(34,197,94,.15)':r==='bear'?'rgba(239,68,68,.15)':r==='neutral'?'rgba(251,146,60,.15)':'rgba(148,163,184,.15)'):'transparent';
     const isCurrent=r!=='all'&&r===CURRENT_REGIME;
     const dot=isCurrent?`<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${col};margin-left:4px;vertical-align:middle" title="Current session regime"></span>`:'';
-    return `<button onclick="PERF_REGIME_FILTER='${r}';renderPerformance()" style="padding:5px 14px;border-radius:20px;border:1px solid ${active?col:'var(--border)'};background:${bg};color:${active?col:'var(--t3)'};font-size:12px;font-weight:${active?700:500};cursor:pointer;white-space:nowrap">${label}${dot}<span style="font-size:10px;opacity:.7">${cntLabel}</span></button>`;
+    return `<button onclick="PERF_REGIME_FILTER='${r}';renderPerformance()" style="padding:5px 14px;border-radius:20px;border:1px solid ${active?col:'var(--border)'};background:${bg};color:${active?col:'var(--t3)'};font-size:12px;font-weight:${active?700:500};cursor:pointer;white-space:nowrap">${label}${dot}</button>`;
   }).join('');
   const periodPills=['all','1m','3m','6m','1y'].map(p=>{
     const active=PERF_PERIOD_FILTER===p;
@@ -4760,6 +4758,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
