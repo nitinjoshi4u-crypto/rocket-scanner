@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-07 12:10 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-07 12:25 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2384,8 +2384,9 @@ function renderPerformance(){
       const avgCost=avg||HOLD_COST_MAP[sym]||null;
       const pnlPct=(avgCost&&ltp)?+((ltp-avgCost)/avgCost*100).toFixed(2):null;
       const pnlRs=(avgCost&&ltp&&qty)?+((ltp-avgCost)*qty).toFixed(0):null;
-      const todayBuy=ORDERS_TODAY?.find(o=>o.symbol===sym&&o.type==='buy');
-      const buyDateStr=todayBuy?(todayBuy.time||'').substring(0,10)||null:LAST_BUY_DATE_MAP[sym]||null;
+      const _latestOrderDate=ORDERS_TODAY?.length?getLatestOrderSession()?.date:null;
+      const todayBuy=(_latestOrderDate&&ORDERS_TODAY?._loadedThisSession)?ORDERS_TODAY.find(o=>o.symbol===sym&&o.type==='buy'&&normOrderDate(o.time)===_latestOrderDate):null;
+      const buyDateStr=todayBuy?_latestOrderDate:LAST_BUY_DATE_MAP[sym]||null;
       const daysHeld=buyDateStr?Math.max(0,Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000)):null;
       const capDeployed=(avgCost&&qty)?+(avgCost*qty).toFixed(0):null;
       // Action logic: cutoffDays is when win rate drops below 60%
@@ -4103,8 +4104,9 @@ function _showGttPopupInner(){
     const avg=avgCost||HOLD_COST_MAP[sym]||null;
     const pnlPct=(avg&&ltp)?+((ltp-avg)/avg*100).toFixed(2):null;
     // Days held: today's Orders.csv BUY date → tradebook last buy date
-    const todayBuy=ORDERS_TODAY?.find(o=>o.symbol===sym&&o.type==='buy');
-    const buyDateStr=todayBuy?(todayBuy.time||'').substring(0,10)||null:LAST_BUY_DATE_MAP[sym]||null;
+    const _gttLatestDate=ORDERS_TODAY?.length?getLatestOrderSession()?.date:null;
+    const todayBuy=(_gttLatestDate&&ORDERS_TODAY?._loadedThisSession)?ORDERS_TODAY.find(o=>o.symbol===sym&&o.type==='buy'&&normOrderDate(o.time)===_gttLatestDate):null;
+    const buyDateStr=todayBuy?_gttLatestDate:LAST_BUY_DATE_MAP[sym]||null;
     const daysHeld=buyDateStr?Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000):null;
     const tgtPrice=avg?tickPrice(avg*(1+adaptiveTGT/100)):null;
     const slPrice=avg?tickPrice(avg*(1-adaptiveSL/100)):null;
@@ -4758,6 +4760,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
