@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-07 12:25 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-07 12:29 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2386,7 +2386,8 @@ function renderPerformance(){
       const pnlRs=(avgCost&&ltp&&qty)?+((ltp-avgCost)*qty).toFixed(0):null;
       const _latestOrderDate=ORDERS_TODAY?.length?getLatestOrderSession()?.date:null;
       const todayBuy=(_latestOrderDate&&ORDERS_TODAY?._loadedThisSession)?ORDERS_TODAY.find(o=>o.symbol===sym&&o.type==='buy'&&normOrderDate(o.time)===_latestOrderDate):null;
-      const buyDateStr=todayBuy?_latestOrderDate:LAST_BUY_DATE_MAP[sym]||null;
+      const inPositions=POSITIONS?.find(p=>p.symbol===sym&&p.qty>0&&!p.isSell);
+      const buyDateStr=todayBuy?_latestOrderDate:inPositions?getSessionDate():LAST_BUY_DATE_MAP[sym]||null;
       const daysHeld=buyDateStr?Math.max(0,Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000)):null;
       const capDeployed=(avgCost&&qty)?+(avgCost*qty).toFixed(0):null;
       // Action logic: cutoffDays is when win rate drops below 60%
@@ -4760,6 +4761,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
