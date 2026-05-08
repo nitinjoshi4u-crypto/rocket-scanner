@@ -173,7 +173,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
   .ctrls{gap:6px}
   .fg{flex:0 0 auto}
   .ctrls .btn{width:100%;justify-content:center}
-  #basketBtn,#gttValuesBtn{flex:1 1 calc(50% - 6px)}
+  #basketBtn{flex:1 1 calc(50% - 6px)}
   .status-bar{font-size:10px}
   .info-bar{gap:5px}
   .info-pill{font-size:10px;padding:3px 8px}
@@ -316,7 +316,6 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Top-up %</span><input type="number" id="fTopupAlloc" value="50" placeholder="50" min="10" max="100" step="10" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Allocation % for top-up candidates vs a fresh buy. 50 means top-up gets half the normal score-weighted allocation. Default 50%."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Top %</span><input type="number" id="fRocketTopPct" value="10" placeholder="10" min="0.5" max="50" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="saveFilterState();applyFilters()" title="Top X% of post-filter stocks by 1D gain qualify as Rockets for engine learning. Default 10%."></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
-   <button class="btn" id="gttValuesBtn" onclick="showGttPopup()" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:var(--blue);font-weight:700" title="GTT values for all holdings and positions">📋 GTT Values <span id="gttCount"></span></button>
   </div>
   <div class="status-bar" id="statusBar"></div>
   <div id="tblOuter">
@@ -334,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-07 16:46 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 08:50 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2340,6 +2339,8 @@ function renderPerformance(){
   let timeStopHtml='', timeStopTblObj=null;
   (function(){
     if(!allTrips.length) return;
+    const adaptiveSL=TRADEBOOK_STATS?.adaptiveSL||3.5;
+    const adaptiveTGT=getEffectiveTgtPct()||(TRADEBOOK_STATS?.adaptiveTGT||3.7);
     // ── Empirical thresholds from this user's tradebook ──
     // Find the hold-day cutoff where the win rate crosses below 60%.
     // Buckets: 0-1, 2-3, 4-5, 6-10, 11-20, 21+
@@ -2389,6 +2390,9 @@ function renderPerformance(){
       const buyDateStr=todayBuy?_latestOrderDate:inPositions?getSessionDate():LAST_BUY_DATE_MAP[sym]||null;
       const daysHeld=buyDateStr?Math.max(0,Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000)):null;
       const capDeployed=(avgCost&&qty)?+(avgCost*qty).toFixed(0):null;
+      const tgtPrice=avgCost?tickPrice(avgCost*(1+adaptiveTGT/100)):null;
+      const slPrice=avgCost?tickPrice(avgCost*(1-adaptiveSL/100)):null;
+      const engineScore=SCORE_MAP?.[sym]??null;
       // Action logic: cutoffDays is when win rate drops below 60%
       let action='HOLD',actionC='var(--green)',actionBg='rgba(34,197,94,.12)';
       if(daysHeld!=null&&daysHeld>cutoffDays){
@@ -2396,7 +2400,20 @@ function renderPerformance(){
         else if(pnlPct!=null&&pnlPct<2){action='WATCH';actionC='var(--amber)';actionBg='rgba(251,191,36,.15)';}
         else {action='TRAIL';actionC='var(--cyan)';actionBg='rgba(6,182,212,.12)';}
       }
-      _rows.push({sym,qty,avg:avgCost,ltp,pnlPct,pnlRs,daysHeld,capDeployed,action,actionC,actionBg,
+      // Signal: combined metric — time pressure + P&L + engine score
+      // Each factor 0-100 normalized; lower = more urgent to exit
+      const timePressure=daysHeld!=null?Math.min(100,Math.round(daysHeld/cutoffDays*100)):50;
+      const pnlScore=pnlPct!=null?Math.min(100,Math.max(0,50+pnlPct*5)):50; // 50=flat, 0=deep loss, 100=big gain
+      const scoreComponent=engineScore!=null?engineScore:50;
+      // Combined: weight time 40%, P&L 40%, engine score 20%
+      const _rawSignal=Math.round(timePressure*0.4+pnlScore*0.4+scoreComponent*0.2);
+      // Invert so lower = exit urgency; map to label
+      let signal,signalC;
+      if(_rawSignal<35){signal='EXIT';signalC='var(--red)';}
+      else if(_rawSignal<50){signal='REDUCE';signalC='var(--amber)';}
+      else if(_rawSignal<70){signal='HOLD';signalC='var(--t2)';}
+      else{signal='TRAIL';signalC='var(--cyan)';}
+      _rows.push({sym,qty,avg:avgCost,ltp,pnlPct,pnlRs,daysHeld,capDeployed,tgtPrice,slPrice,action,actionC,actionBg,signal,signalC,_rawSignal,
         _sortDays:daysHeld==null?-1:daysHeld,_actionPri:action==='EXIT NOW'?0:action==='WATCH'?1:action==='TRAIL'?2:3});
     };
     if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) _addPos(p.symbol,p.qty,p.avg||p.avgCost,p.ltp);});
@@ -2426,7 +2443,10 @@ function renderPerformance(){
       {key:'pnlRs',label:'P&L ₹',align:'right',fmt:v=>v!=null?(v>=0?'+':'−')+'₹'+Math.abs(v).toLocaleString('en-IN'):'—',clrFn:v=>v==null?'var(--t3)':v>0?'var(--green)':v<0?'var(--red)':'var(--t2)'},
       {key:'capDeployed',label:'Capital ₹',align:'right',fmt:v=>v!=null?'₹'+v.toLocaleString('en-IN'):'—',clrFn:()=>'var(--t2)'},
       {key:'_sortDays',label:'Days Held',align:'right',fmt:(v,r)=>_daysFmt(r.daysHeld),clrFn:()=>'var(--t1)'},
-      {key:'_actionPri',label:'Action',align:'center',fmt:(v,r)=>_actionFmt(r.action,r),clrFn:()=>''},
+      {key:'tgtPrice',label:'Target ₹',align:'right',fmt:(v,r)=>v!=null?'₹'+v.toLocaleString('en-IN',{maximumFractionDigits:2})+`<span style="font-size:10px;color:var(--t3);margin-left:4px">+${adaptiveTGT}%</span>`:'—',clrFn:()=>'var(--green)'},
+      {key:'slPrice',label:'SL ₹',align:'right',fmt:(v,r)=>v!=null?'₹'+v.toLocaleString('en-IN',{maximumFractionDigits:2})+`<span style="font-size:10px;color:var(--t3);margin-left:4px">-${adaptiveSL}%</span>`:'—',clrFn:()=>'var(--red)'},
+      {key:'_rawSignal',label:'Signal',align:'center',fmt:(v,r)=>`<span style="display:inline-block;padding:3px 10px;border-radius:12px;background:${r.signalC}22;color:${r.signalC};font-weight:800;font-size:11px;border:1px solid ${r.signalC}44">${r.signal}</span>`,clrFn:()=>''},
+      {key:'_actionPri',label:'Time-Stop',align:'center',fmt:(v,r)=>_actionFmt(r.action,r),clrFn:()=>''},
     ];
     // Sort: action priority first (EXIT NOW → WATCH → TRAIL → HOLD), then days desc
     const _sorted=[..._rows].sort((a,b)=>a._actionPri-b._actionPri||b._sortDays-a._sortDays);
@@ -3255,20 +3275,10 @@ function renderBasketBtn(){
   const buyCount=selList.length;
   const holdCount=(HOLDINGS&&HOLDINGS.length>0)||(POSITIONS&&POSITIONS.length>0)?1:0;
   const buyBtn=document.getElementById('basketBtn');
-  const gttBtn=document.getElementById('gttValuesBtn');
   if(buyBtn){
     const cntSpan=document.getElementById('basketCount');
     if(cntSpan)cntSpan.textContent=buyCount>0?`(${buyCount})`:'';
     buyBtn.disabled=buyCount===0;
-  }
-  if(gttBtn){
-    const gttSpan=document.getElementById('gttCount');
-    const symSet=new Set();
-    if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) symSet.add(p.symbol);});
-    if(HOLDINGS?.length) HOLDINGS.forEach(h=>{if(h.qty>0) symSet.add(h.symbol);});
-    const n=symSet.size;
-    if(gttSpan)gttSpan.textContent=n>0?`(${n})`:'';
-    gttBtn.disabled=false; // always enabled — showGttPopup shows toast if no data
   }
 }
 function renderBasketSummary(){
@@ -4071,83 +4081,6 @@ function calcZerodhaChargesSplit(price, qty, isSell, isIntraday, skipDp){
   return {brokerage,stt,txn,sebi,gst,stamp,dp};
 }
 
-function showGttPopup(){
-  try{_showGttPopupInner();}catch(e){console.error('showGttPopup error:',e);showToast('GTT popup error: '+e.message,5000,true);}
-}
-function _showGttPopupInner(){
-  const clr=v=>v>0?'var(--green)':v<0?'var(--red)':'var(--t2)';
-  const fmtRs=v=>v!=null?'₹'+Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
-  const fmtPct=v=>v!=null?(v>=0?'+':'')+Number(v).toFixed(2)+'%':'—';
-  const adaptiveSL=TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveSL:3.5;
-  const adaptiveTGT=getEffectiveTgtPct()||(TRADEBOOK_STATS?TRADEBOOK_STATS.adaptiveTGT:3.7);
-
-  // Merge HOLDINGS + POSITIONS into one list (deduplicated by symbol)
-  const symSet=new Set();
-  const rows=[];
-  const addSym=(sym,qty,avgCost,ltpSrc)=>{
-    if(!sym||qty<=0||symSet.has(sym)) return;
-    symSet.add(sym);
-    // LTP priority: ALL scanner > Positions CSV LTP > Holdings CSV LTP
-    const scannerRow=ALL.find(s=>s.symbol===sym);
-    const ltp=scannerRow?.price
-      ||(POSITIONS?.find(p=>p.symbol===sym)?.ltp)
-      ||(HOLDINGS?.find(h=>h.symbol===sym)?.ltp)
-      ||ltpSrc||null;
-    const avg=avgCost||HOLD_COST_MAP[sym]||null;
-    const pnlPct=(avg&&ltp)?+((ltp-avg)/avg*100).toFixed(2):null;
-    // Days held: today's Orders.csv BUY date → tradebook last buy date
-    const _gttLatestDate=ORDERS_TODAY?.length?getLatestOrderSession()?.date:null;
-    const todayBuy=(_gttLatestDate&&ORDERS_TODAY?._loadedThisSession)?ORDERS_TODAY.find(o=>o.symbol===sym&&o.type==='buy'&&normOrderDate(o.time)===_gttLatestDate):null;
-    const _gttInPositions=POSITIONS?.find(p=>p.symbol===sym&&p.qty>0&&!p.isSell);
-    const buyDateStr=todayBuy?_gttLatestDate:_gttInPositions?getSessionDate():LAST_BUY_DATE_MAP[sym]||null;
-    const daysHeld=buyDateStr?Math.round((Date.now()-new Date(buyDateStr).getTime())/86400000):null;
-    const tgtPrice=avg?tickPrice(avg*(1+adaptiveTGT/100)):null;
-    const slPrice=avg?tickPrice(avg*(1-adaptiveSL/100)):null;
-    rows.push({sym,qty,avg,ltp,pnlPct,daysHeld,tgtPrice,slPrice});
-  };
-  if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) addSym(p.symbol,p.qty,p.avg||p.avgCost,p.ltp);});
-  if(HOLDINGS?.length) HOLDINGS.forEach(h=>{if(h.qty>0) addSym(h.symbol,h.qty,h.avgCost,h.ltp);});
-
-  if(!rows.length){showToast('No holdings found. Upload Holdings.csv or Positions.csv first.',4000,true);return;}
-
-  // Define sortable columns for GTT table
-  const gttCols=[
-    {key:'sym',label:'Symbol',align:'left',fmt:v=>v,clrFn:()=>'var(--t1)',bold:true},
-    {key:'qty',label:'Qty',align:'right',fmt:v=>v,clrFn:()=>'var(--t1)'},
-    {key:'avg',label:'Avg Cost',align:'right',fmt:v=>fmtRs(v),clrFn:()=>'var(--t1)'},
-    {key:'ltp',label:'LTP',align:'right',fmt:v=>fmtRs(v),clrFn:()=>'var(--t1)'},
-    {key:'pnlPct',label:'P&L%',align:'right',fmt:v=>fmtPct(v),clrFn:clr,bold:true},
-    {key:'daysHeld',label:'Days Held',align:'right',fmt:v=>v!=null?v+'d':'—',clrFn:()=>'var(--t2)'},
-    {key:'tgtPrice',label:'Target ₹',align:'right',fmt:v=>fmtRs(v)+(v!=null?`<span style="font-size:10px;color:var(--t3);margin-left:4px">+${adaptiveTGT}%</span>`:''),clrFn:()=>'var(--green)'},
-    {key:'slPrice',label:'SL ₹',align:'right',fmt:v=>fmtRs(v)+(v!=null?`<span style="font-size:10px;color:var(--t3);margin-left:4px">-${adaptiveSL}%</span>`:''),clrFn:()=>'var(--red)'},
-  ];
-
-  const gttTable=makeSortableTable('gtt-table',gttCols,rows,'pnlPct',-1);
-  const tableHtml=gttTable.getHtml();
-
-  const existing=document.getElementById('gttModal');
-  if(existing) existing.remove();
-
-  const modal=document.createElement('div');
-  modal.id='gttModal';
-  modal.style.cssText='position:fixed;inset:0;z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;background:rgba(0,0,0,.65);backdrop-filter:blur(4px)';
-  modal.innerHTML=`
-    <div style="background:var(--bg-card);border:1px solid var(--border-hi);border-radius:14px;width:100%;max-width:900px;padding:24px;box-shadow:0 16px 64px rgba(0,0,0,.5)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div>
-          <div style="font-size:16px;font-weight:800;color:var(--t1)">📋 GTT Values — ${rows.length} positions</div>
-          <div style="font-size:11px;color:var(--t3);margin-top:3px">Set these as OCO orders in Zerodha → Holdings tab. SL ${adaptiveSL}% · TGT ${adaptiveTGT}% (tradebook-derived)</div>
-        </div>
-        <button onclick="document.getElementById('gttModal').remove()" style="background:none;border:1px solid var(--border);color:var(--t3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px">✕</button>
-      </div>
-      <div style="overflow-x:auto">
-        ${tableHtml}
-      </div>
-    </div>`;
-  modal.addEventListener('click',e=>{if(e.target===modal) modal.remove();});
-  document.body.appendChild(modal);
-  gttTable.render(); // must run after modal is in DOM so getElementById finds the table
-}
 
 function exportBasket(){
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
@@ -4747,6 +4680,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
