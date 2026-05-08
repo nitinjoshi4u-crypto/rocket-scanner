@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 12:59 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 15:34 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2118,6 +2118,8 @@ function renderPerformance(){
   const p=computePerfStats(recentTrips.length?recentTrips:filteredByRegime);
   const allSellDates=[...new Set(recentTrips.map(r=>r.sellDate))].sort();
   const dfrom=allSellDates[0], dto=allSellDates.at(-1);
+  const calDayCount=(dfrom&&dto)?Math.round((new Date(dto)-new Date(dfrom))/86400000)+1:null;
+  const avgCalDayPnl=(calDayCount&&calDayCount>0)?Math.round(p.totalNetPnlRs/calDayCount):null;
   const regimeLabel=PERF_REGIME_FILTER==='all'?'All regimes':PERF_REGIME_FILTER==='bull'?'🐂 Bull':PERF_REGIME_FILTER==='bear'?'🐻 Bear':'➡ Neutral';
   const periodLabel=(dfrom&&dto)?`${dfrom} → ${dto} · ${regimeLabel}`:`All time · ${regimeLabel}`;
 
@@ -2127,7 +2129,8 @@ function renderPerformance(){
     {label:'Profit Factor',value:p.profitFactor!=null?p.profitFactor:'—',color:p.profitFactor>=1.5?'var(--green)':p.profitFactor>=1?'var(--amber)':'var(--red)',sub:'Gross wins ÷ gross losses'},
     {label:'Win Rate',value:p.winRate+'%',color:p.winRate>=55?'var(--green)':p.winRate>=45?'var(--amber)':'var(--red)',sub:`${p.winners}W · ${p.losers}L lots`},
     {label:'Profitable Days',value:p.pctProfitableDays+'%',color:p.pctProfitableDays>=60?'var(--green)':p.pctProfitableDays>=50?'var(--amber)':'var(--red)',sub:`${p.profitableDays} of ${p.totalTradingDays} days`},
-    {label:'Avg Daily P&L',value:fmtRs(p.avgDailyPnl),color:clr(p.avgDailyPnl),sub:'On days traded, net of charges'},
+    {label:'Avg P&L/Trading Day',value:fmtRs(p.avgDailyPnl),color:clr(p.avgDailyPnl),sub:`On ${p.totalTradingDays} days traded, net of charges`},
+    {label:'Avg P&L/Cal Day',value:avgCalDayPnl!=null?fmtRs(avgCalDayPnl):'—',color:avgCalDayPnl!=null?clr(avgCalDayPnl):'var(--t3)',sub:calDayCount?`Over ${calDayCount} calendar days`:'Insufficient date range'},
     {label:'Largest Win',value:'+₹'+p.largestWinRs.toLocaleString('en-IN'),color:'var(--green)',sub:'Single lot, net'},
     {label:'Max Win Streak',value:p.maxWinStreak+' days',color:p.maxWinStreak>=5?'var(--green)':p.maxWinStreak>=3?'var(--amber)':'var(--t1)',sub:'Consecutive profitable days'},
     {label:'Avg Hold',value:p.avgHoldDays+'d',color:'var(--t1)',sub:'Avg position duration'},
@@ -2155,16 +2158,31 @@ function renderPerformance(){
     {key:'month',label:'Month',align:'left',fmt:v=>v,clrFn:()=>'var(--t1)'},
     {key:'pnl',label:'Net P&L',align:'right',bold:true,fmt:fmtRs,clrFn:clr},
     {key:'trades',label:'Lots',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
-    {key:'days',label:'Days',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
-    {key:'avgDay',label:'Avg/Day',align:'right',fmt:fmtRs,clrFn:clr},
+    {key:'days',label:'Trading Days',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
+    {key:'avgDay',label:'Avg/Trading Day',align:'right',fmt:fmtRs,clrFn:clr},
+    {key:'calDays',label:'Cal Days',align:'right',fmt:v=>v,clrFn:()=>'var(--t2)'},
+    {key:'avgCalDay',label:'Avg/Cal Day',align:'right',fmt:fmtRs,clrFn:clr},
   ];
   const monthMap={};
   filteredByRegime.forEach(r=>{
     const ym=r.sellDate.substring(0,7);
-    if(!monthMap[ym]) monthMap[ym]={month:ym,pnl:0,trades:0,days:0,_dates:new Set()};
+    if(!monthMap[ym]) monthMap[ym]={month:ym,pnl:0,trades:0,days:0,_dates:new Set(),_minDate:r.sellDate,_maxDate:r.sellDate};
     monthMap[ym].pnl+=r.netPnl; monthMap[ym].trades++; monthMap[ym]._dates.add(r.sellDate);
+    if(r.sellDate<monthMap[ym]._minDate) monthMap[ym]._minDate=r.sellDate;
+    if(r.sellDate>monthMap[ym]._maxDate) monthMap[ym]._maxDate=r.sellDate;
   });
-  const monthRows=Object.values(monthMap).map(m=>({month:m.month,pnl:+m.pnl.toFixed(0),trades:m.trades,days:m._dates.size,avgDay:m._dates.size?Math.round(m.pnl/m._dates.size):0}));
+  const monthRows=Object.values(monthMap).map(m=>{
+    // Calendar days: for a full month use days-in-month; for partial use actual span
+    const [y,mo]=m.month.split('-').map(Number);
+    const daysInMonth=new Date(y,mo,0).getDate();
+    const firstOfMonth=m.month+'-01', lastOfMonth=m.month+'-'+String(daysInMonth).padStart(2,'0');
+    const spanStart=m._minDate<=firstOfMonth?firstOfMonth:m._minDate;
+    const spanEnd=m._maxDate>=lastOfMonth?lastOfMonth:m._maxDate;
+    const calDays=Math.round((new Date(spanEnd)-new Date(spanStart))/86400000)+1;
+    return {month:m.month,pnl:+m.pnl.toFixed(0),trades:m.trades,days:m._dates.size,
+      avgDay:m._dates.size?Math.round(m.pnl/m._dates.size):0,
+      calDays,avgCalDay:calDays>0?Math.round(m.pnl/calDays):0};
+  });
   const monthTbl=makeSortableTable('perf-month',monthCols,monthRows,'month',-1);
 
   const symRows=(p.symBreakdown||[]).map(r=>({...r,edge:+((r.winRate*r.avgPct)*Math.min(1,r.trades/5)).toFixed(2)}));
@@ -4674,6 +4692,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
