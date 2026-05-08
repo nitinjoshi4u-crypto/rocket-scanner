@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 12:58 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 12:59 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2411,7 +2411,7 @@ function renderPerformance(){
         const nDistSL =_norm(eligible.map(r=>r.distSL));
         eligible.forEach((r,i)=>{
           const pp=nPnlPct[i]??0, pr=nPnlRs[i]??0, dy=nDays[i]??0, sl=nDistSL[i]??0;
-          r.signal=+(pp*0.4 + pr*0.3 + (-dy)*0.2 + sl*0.1).toFixed(2);
+          r.signal=+((pp + pr + (-dy) + sl) / 4).toFixed(2);
         });
       }
     }
@@ -2458,7 +2458,7 @@ function renderPerformance(){
     ].filter(Boolean).join(' ');
 
     const _evidence=_longTotal>0
-      ?`<div style="font-size:11px;color:var(--t3);margin-top:6px;line-height:1.5"><strong style="color:var(--t2)">Signal</strong> = P&amp;L% (40%) + P&amp;L ₹ (30%) − Days Held (20%) + Dist-to-SL (10%), all cross-normalised. Lower = more urgent to exit. Positions held &gt;${cutoffDays}d show a <strong style="color:${_longWR<50?'var(--red)':'var(--amber)'}">${_longWR}% win rate</strong> across ${_longTotal} tradebook trips (net ${_longPnl>=0?'+':'−'}₹${Math.abs(_longPnl).toLocaleString('en-IN')}).</div>`
+      ?`<div style="font-size:11px;color:var(--t3);margin-top:6px;line-height:1.5"><strong style="color:var(--t2)">Signal</strong> = avg(P&amp;L%, P&amp;L ₹, −Days Held, Dist-to-SL), all cross-normalised to [−1,+1]. Equal weights — lower = more urgent to exit. Positions held &gt;${cutoffDays}d show a <strong style="color:${_longWR<50?'var(--red)':'var(--amber)'}">${_longWR}% win rate</strong> across ${_longTotal} tradebook trips (net ${_longPnl>=0?'+':'−'}₹${Math.abs(_longPnl).toLocaleString('en-IN')}).</div>`
       :'';
 
     timeStopHtml=`<div id="perf-timestop-card" style="background:var(--bg-card);border:1px solid ${_negCount>0?'rgba(239,68,68,.4)':'var(--border)'};border-radius:10px;margin-bottom:12px;overflow:hidden">
@@ -4674,6 +4674,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
