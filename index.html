@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 09:01 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 09:12 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2394,11 +2394,9 @@ function renderPerformance(){
       const slPrice=avgCost?tickPrice(avgCost*(1-adaptiveSL/100)):null;
       const engineScore=SCORE_MAP?.[sym]??null;
       // Signal = P&L%/day blended with engine score (20% weight)
-      // daysHeld=0 treated as 0.5 to avoid division by zero
-      const _days=daysHeld!=null?Math.max(daysHeld,0.5):0.5;
-      const pnlPerDay=pnlPct!=null?+(pnlPct/_days).toFixed(2):null;
-      // Engine score rescaled to same range as pnlPerDay (typical -5 to +5)
+      // 0d positions get null signal — too early to judge
       const _scoreAdj=engineScore!=null?+((engineScore-50)/50*2).toFixed(2):0;
+      const pnlPerDay=(pnlPct!=null&&daysHeld!=null&&daysHeld>=1)?+(pnlPct/daysHeld).toFixed(2):null;
       const signal=pnlPerDay!=null?+(pnlPerDay*0.8+_scoreAdj*0.2).toFixed(2):null;
       _rows.push({sym,qty,avg:avgCost,ltp,pnlPct,pnlRs,daysHeld,capDeployed,tgtPrice,slPrice,signal,
         _sortDays:daysHeld==null?-1:daysHeld});
@@ -4661,6 +4659,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
