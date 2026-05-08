@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 11:39 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 12:58 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2381,18 +2381,40 @@ function renderPerformance(){
       const capDeployed=(avgCost&&qty)?+(avgCost*qty).toFixed(0):null;
       const tgtPrice=avgCost?tickPrice(avgCost*(1+adaptiveTGT/100)):null;
       const slPrice=avgCost?tickPrice(avgCost*(1-adaptiveSL/100)):null;
-      const engineScore=SCORE_MAP?.[sym]??null;
-      // Signal = P&L%/day blended with engine score (20% weight)
-      // 0d positions get null signal — too early to judge
-      const _scoreAdj=engineScore!=null?+((engineScore-50)/50*2).toFixed(2):0;
-      const pnlPerDay=(pnlPct!=null&&daysHeld!=null&&daysHeld>=1)?+(pnlPct/daysHeld).toFixed(2):null;
-      const signal=pnlPerDay!=null?+(pnlPerDay*0.8+_scoreAdj*0.2).toFixed(2):null;
-      _rows.push({sym,qty,avg:avgCost,ltp,pnlPct,pnlRs,daysHeld,capDeployed,tgtPrice,slPrice,signal,
+      // Distance to SL: positive = above SL (safe), negative = breached SL
+      const distSL=(ltp!=null&&slPrice!=null&&slPrice>0)?+((ltp-slPrice)/slPrice*100).toFixed(2):null;
+      const signal=null; // computed below after all rows collected — needs cross-row normalisation
+      _rows.push({sym,qty,avg:avgCost,ltp,pnlPct,pnlRs,daysHeld,capDeployed,tgtPrice,slPrice,distSL,signal,
         _sortDays:daysHeld==null?-1:daysHeld});
     };
     if(POSITIONS?.length) POSITIONS.forEach(p=>{if(p.qty>0) _addPos(p.symbol,p.qty,p.avg||p.avgCost,p.ltp);});
     if(HOLDINGS?.length) HOLDINGS.forEach(h=>{if(h.qty>0) _addPos(h.symbol,h.qty,h.avgCost,h.ltp);});
     if(!_rows.length) return; // nothing to show
+
+    // ── Signal: composite exit urgency score ──
+    // Components: P&L% (40%), P&L ₹ (30%), Days Held (20%), Distance to SL (10%)
+    // All normalised to [-1,+1] across current rows. Lower = more urgent to exit.
+    // Days Held contribution is sign-flipped: more days → more negative (penalise time drag on losers).
+    // 0d positions get null — too early to judge.
+    {
+      const _norm=(vals)=>{
+        const clean=vals.filter(v=>v!=null&&isFinite(v));
+        if(!clean.length) return vals.map(()=>0);
+        const mn=Math.min(...clean), mx=Math.max(...clean);
+        return vals.map(v=>(v==null||!isFinite(v))?null:(mx===mn?0:2*(v-mn)/(mx-mn)-1));
+      };
+      const eligible=_rows.filter(r=>r.daysHeld!=null&&r.daysHeld>=1);
+      if(eligible.length){
+        const nPnlPct =_norm(eligible.map(r=>r.pnlPct));
+        const nPnlRs  =_norm(eligible.map(r=>r.pnlRs));
+        const nDays   =_norm(eligible.map(r=>r.daysHeld));  // flipped below
+        const nDistSL =_norm(eligible.map(r=>r.distSL));
+        eligible.forEach((r,i)=>{
+          const pp=nPnlPct[i]??0, pr=nPnlRs[i]??0, dy=nDays[i]??0, sl=nDistSL[i]??0;
+          r.signal=+(pp*0.4 + pr*0.3 + (-dy)*0.2 + sl*0.1).toFixed(2);
+        });
+      }
+    }
 
     // Negative signal = underperforming (exit candidates), positive = holding well
     const _negCount=_rows.filter(r=>r.signal!=null&&r.signal<0).length;
@@ -2436,7 +2458,7 @@ function renderPerformance(){
     ].filter(Boolean).join(' ');
 
     const _evidence=_longTotal>0
-      ?`<div style="font-size:11px;color:var(--t3);margin-top:6px;line-height:1.5"><strong style="color:var(--t2)">Signal</strong> = P&amp;L%/day (80%) + engine score (20%). Sorted worst first. Positions held &gt;${cutoffDays}d show a <strong style="color:${_longWR<50?'var(--red)':'var(--amber)'}">${_longWR}% win rate</strong> across ${_longTotal} tradebook trips (net ${_longPnl>=0?'+':'−'}₹${Math.abs(_longPnl).toLocaleString('en-IN')}).</div>`
+      ?`<div style="font-size:11px;color:var(--t3);margin-top:6px;line-height:1.5"><strong style="color:var(--t2)">Signal</strong> = P&amp;L% (40%) + P&amp;L ₹ (30%) − Days Held (20%) + Dist-to-SL (10%), all cross-normalised. Lower = more urgent to exit. Positions held &gt;${cutoffDays}d show a <strong style="color:${_longWR<50?'var(--red)':'var(--amber)'}">${_longWR}% win rate</strong> across ${_longTotal} tradebook trips (net ${_longPnl>=0?'+':'−'}₹${Math.abs(_longPnl).toLocaleString('en-IN')}).</div>`
       :'';
 
     timeStopHtml=`<div id="perf-timestop-card" style="background:var(--bg-card);border:1px solid ${_negCount>0?'rgba(239,68,68,.4)':'var(--border)'};border-radius:10px;margin-bottom:12px;overflow:hidden">
@@ -4652,6 +4674,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
