@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 09:12 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 11:27 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -343,7 +343,7 @@ let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
 let PERF_TRADE_WINDOWS=[]; // cached trade window rows from renderPerformance — used by current-window pill
 let PERF_LATEST_SUMMARY=null; // cached latest session summary from renderPerformance — used by renderStats card
 let ENGINE_DATA={};
-let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0};
+let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0};
 let SUPPRESSED_HELD=0; // count of stocks hidden because already held in POSITIONS
 let SELECTED=new Set(); // symbols selected for basket — recomputed from FILT each applyFilters
 let PREV_SNAP={}; // symbol→{featureKey:value,...} full feature vector from last upload
@@ -779,7 +779,6 @@ let CORE_FILTERS={
   liq:{enabled:true,minSh:10000,minVol:5000}, // liquidity floor
   fscore:{enabled:true,maxScore:3},           // Piotroski ≤ this value filtered out
   deliv:{enabled:true,minDeliv:30},           // delivery % minimum
-  fade:{enabled:true,minRetention:50,minRange:1}, // peak retention % below this when range > minRange%
 };
 let _initInProgress=true; // suppresses applyFilters inside setAutoVolume during startup
 function setAutoVolume(){
@@ -921,7 +920,7 @@ function loadCoreFilters(){
     const raw=JSON.parse(localStorage.getItem(CORE_FILTER_STORE)||'null');
     if(raw&&typeof raw==='object'){
       // Merge saved values into defaults (preserves any new keys we add later)
-      ['uc','liq','fscore','deliv','fade'].forEach(k=>{
+      ['uc','liq','fscore','deliv'].forEach(k=>{
         if(raw[k]&&typeof raw[k]==='object') Object.assign(CORE_FILTERS[k],raw[k]);
       });
     }
@@ -975,7 +974,6 @@ function getHardFilterRowsFromEngine(E){
     {key:'low_liquidity',label:'Low Liquidity',criteria:`Shareholders < ${CORE_FILTERS.liq.minSh.toLocaleString()} OR Volume < ${CORE_FILTERS.liq.minVol.toLocaleString()}`,removed:rm.liq||0,rockets:rk.liq||[],active:true,kind:'core'},
     {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,rockets:rk.fscore||[],active:true,kind:'core'},
     {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,rockets:rk.deliv||[],active:true,kind:'core'},
-    {key:'fading_peak_retention',label:'Fading (Peak Retention)',criteria:'Peak retention < 50% when day range > 1%',removed:rm.fade||0,rockets:rk.fade||[],active:true,kind:'core'},
   ];
 }
 function persistMethodologySnapshot(){
@@ -1291,8 +1289,8 @@ function runEngine(raw, sessionTag){
   let rocketPct=ENGINE_DATA?.rocketThreshold||10, holdFactor=0.3;
 
   // ── Hard Filters ──
-  REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0,
-    rockets:{uc:[],surv:[],liq:[],fscore:[],deliv:[],fade:[]}};
+  REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,
+    rockets:{uc:[],surv:[],liq:[],fscore:[],deliv:[]}};
   const filtered=parsed.filter(d=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
@@ -1332,17 +1330,6 @@ function runEngine(raw, sessionTag){
         REMOVED.deliv++;
         if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
         return false;
-      }
-    }
-    // Peak retention — fading stocks
-    if(CORE_FILTERS.fade.enabled){
-      const hi1d=K.high_1d?d[K.high_1d]:null, lo1d=K.low_1d?d[K.low_1d]:null;
-      if(hi1d!=null&&lo1d!=null&&lo1d>0&&(hi1d-lo1d)/lo1d>(CORE_FILTERS.fade.minRange/100)){
-        if(d.peak_retention!=null&&d.peak_retention<CORE_FILTERS.fade.minRetention){
-          REMOVED.fade++;
-          if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fade.push({sym,pc});
-          return false;
-        }
       }
     }
     return true;
@@ -1893,7 +1880,6 @@ function renderStats(){
   if(REMOVED.liq>0)filterPills.push(`<span class="info-pill pill-blue">🚫 ${REMOVED.liq} low liquidity removed</span>`);
   if(REMOVED.fscore>0)filterPills.push(`<span class="info-pill pill-gray">🚫 ${REMOVED.fscore} F-Score removed</span>`);
   if(REMOVED.deliv>0)filterPills.push(`<span class="info-pill pill-cyan">🚫 ${REMOVED.deliv} low delivery removed</span>`);
-  if(REMOVED.fade>0)filterPills.push(`<span class="info-pill pill-teal">🚫 ${REMOVED.fade} fading removed</span>`);
   const topUpCt=FILT.filter(s=>s._isTopUp).length;
   if(topUpCt>0)filterPills.push(`<span class="info-pill pill-fire" title="Already in portfolio — shown as top-up candidates.">↑ ${topUpCt} top-up</span>`);
   if(SUPPRESSED_HELD>0)filterPills.push(`<span class="info-pill pill-rose" title="Short positions and zero-qty holdings are always hidden.">📌 ${SUPPRESSED_HELD} held</span>`);
@@ -2531,9 +2517,6 @@ function _saveCoreFilterField(id, val){
     'cf_fs_max':['fscore','maxScore'],
     'cf_deliv':['deliv','enabled'],
     'cf_del_min':['deliv','minDeliv'],
-    'cf_fade':['fade','enabled'],
-    'cf_fade_ret':['fade','minRetention'],
-    'cf_fade_rng':['fade','minRange'],
   };
   const path=map[id];
   if(!path) return;
@@ -2618,13 +2601,6 @@ function buildHardFilterMethodologyHTML(E){
           <span style="font-size:11px;color:var(--t3)">Min</span>
           ${iEl('cf_del_min',CORE_FILTERS.deliv.minDeliv,'60px')}
           <span style="font-size:11px;color:var(--t3)">%</span>
-        </div>
-      </div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-        ${tog('fade','Fade Filter',rmBadge(coreRow.fading_peak_retention||{})+rktBadge(coreRow.fading_peak_retention||{}))}
-        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;padding-left:20px">
-          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--t3);width:100px">Peak Retention &lt;</span>${iEl('cf_fade_ret',CORE_FILTERS.fade.minRetention,'60px')}<span style="font-size:11px;color:var(--t3)">%</span></div>
-          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--t3);width:100px">When day range &gt;</span>${iEl('cf_fade_rng',CORE_FILTERS.fade.minRange,'60px')}<span style="font-size:11px;color:var(--t3)">%</span></div>
         </div>
       </div>
     </div>`;
@@ -3024,7 +3000,7 @@ function renderMethodology(){
       <div class="m-card"><h4>🎯 Quality-Adjusted Target</h4><p>Stocks that moved <strong>≥${E.rocketThreshold||10}% up</strong>, plus yesterday's rockets that <strong>held today</strong> (didn't collapse beyond hold threshold). Yesterday's rockets that collapsed get reclassified as 0 — the engine <em>unlearns</em> features that predicted fragile spikes. Over sessions, this trains the engine to recommend <strong>durable</strong> moves, not one-day spikes.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Regime-Conditional Learning</h4><p>Market classified as <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% breadth). Bull ≥55%, Bear &lt;35%. Each regime maintains <strong>separate correlation accumulators</strong> — bull sessions learn breakout patterns, bear sessions learn resilience patterns. ${E.learningRegime&&E.learningRegime!==E.regime?'Latest lagged outcome trained the <strong>'+E.learningRegime.toUpperCase()+'</strong> bucket because that was the prior scan regime. ':''}${E.useRegimeCorr?'Using <strong>regime-specific</strong> correlations.':'Regime history still warming up (need ≥2 sessions in this regime).'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s data and fed into mRMR. Stocks in strong sectors score higher in bull markets; stocks outperforming weak sectors score higher in bear markets.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed stocks (exact NSE REG1 column matching — see Hard Filters table below), low liquidity (shareholders &lt;500 or volume &lt;5K), Piotroski F-Score ≤ 3, delivery &lt;30%, and <strong>peak retention &lt;50%</strong> (fading; only when day range &gt;1%). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)+(REMOVED.fade||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed stocks (exact NSE REG1 column matching — see Hard Filters table below), low liquidity (shareholders &lt;${CORE_FILTERS.liq.minSh.toLocaleString()} or volume &lt;${CORE_FILTERS.liq.minVol.toLocaleString()}), Piotroski F-Score ≤ ${CORE_FILTERS.fscore.maxScore}, delivery &lt;${CORE_FILTERS.deliv.minDeliv}%. Peak retention is scored by mRMR — fading stocks naturally rank lower without a hard cutoff. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)} stocks.</p></div>
     </div>
 
     <p style="color:var(--t3);font-style:italic;margin-top:4px">⚠ Quantitative screening only. Not financial advice. Past momentum ≠ future returns.</p>
@@ -4409,7 +4385,7 @@ async function initApp(){
         COLS=getCols();
         // Restore REMOVED counts so filter pills show correctly on page load
         if(meth.removed&&typeof meth.removed==='object'){
-          REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,fade:0,...meth.removed};
+          REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,...meth.removed};
           if(typeof REMOVED.survRules!=='object'||Array.isArray(REMOVED.survRules)) REMOVED.survRules={};
         }
         console.log('INIT: restored methodology data,',meth.features.length,'features');
@@ -4659,6 +4635,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
