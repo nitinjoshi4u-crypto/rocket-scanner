@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 15:34 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 15:36 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2171,14 +2171,23 @@ function renderPerformance(){
     if(r.sellDate<monthMap[ym]._minDate) monthMap[ym]._minDate=r.sellDate;
     if(r.sellDate>monthMap[ym]._maxDate) monthMap[ym]._maxDate=r.sellDate;
   });
+  const _allMonths=Object.keys(monthMap).sort();
+  const _firstMonth=_allMonths[0], _lastMonth=_allMonths.at(-1);
+  const _todayYM=getSessionDate().substring(0,7);
   const monthRows=Object.values(monthMap).map(m=>{
-    // Calendar days: for a full month use days-in-month; for partial use actual span
     const [y,mo]=m.month.split('-').map(Number);
     const daysInMonth=new Date(y,mo,0).getDate();
-    const firstOfMonth=m.month+'-01', lastOfMonth=m.month+'-'+String(daysInMonth).padStart(2,'0');
-    const spanStart=m._minDate<=firstOfMonth?firstOfMonth:m._minDate;
-    const spanEnd=m._maxDate>=lastOfMonth?lastOfMonth:m._maxDate;
-    const calDays=Math.round((new Date(spanEnd)-new Date(spanStart))/86400000)+1;
+    let calDays;
+    if(m.month===_firstMonth){
+      // Partial start: from first sell date to end of month
+      calDays=Math.round((new Date(m.month+'-'+String(daysInMonth).padStart(2,'0'))-new Date(m._minDate))/86400000)+1;
+    } else if(m.month===_lastMonth&&m.month===_todayYM){
+      // Partial end (current month): from start of month to last sell date
+      calDays=Math.round((new Date(m._maxDate)-new Date(m.month+'-01'))/86400000)+1;
+    } else {
+      // Full month
+      calDays=daysInMonth;
+    }
     return {month:m.month,pnl:+m.pnl.toFixed(0),trades:m.trades,days:m._dates.size,
       avgDay:m._dates.size?Math.round(m.pnl/m._dates.size):0,
       calDays,avgCalDay:calDays>0?Math.round(m.pnl/calDays):0};
@@ -4692,6 +4701,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
