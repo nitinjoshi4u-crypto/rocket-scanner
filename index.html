@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 11:27 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-08 11:39 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1817,12 +1817,15 @@ function renderStats(){
   const scoreMin=scores.length?Math.min(...scores).toFixed(1):'—';
   const scoreSpread=scores.length?(Math.max(...scores)-Math.min(...scores)).toFixed(1):'—';
 
-  // Rockets today: stocks that moved ≥ threshold — the engine's training signal.
-  // This is the engine's rocket count, not the current table page size.
-  let rocketCount = ENGINE_DATA?.rocketCount;
-  if(rocketCount==null){
-    rocketCount = ALL.filter(s => s.priceChange != null && s.priceChange >= ENGINE_DATA?.rocketThreshold).length;
+  // Rockets today: recompute live from ALL using current fRocketTopPct so the card updates when Top% changes
+  const _rsTopPct=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
+  let _rsCeiling=ENGINE_DATA?.rocketThreshold||10;
+  if(ALL.length>0){
+    const _rsPcVals=ALL.map(s=>s.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+    const _rsCut=Math.max(0,Math.floor(_rsPcVals.length*(1-_rsTopPct/100)));
+    _rsCeiling=_rsPcVals.length>0?+(_rsPcVals[_rsCut]||0).toFixed(2):_rsCeiling;
   }
+  const rocketCount=ALL.filter(s=>s.priceChange!=null&&s.priceChange>=_rsCeiling).length;
 
   // Compute top sector by breadth
   const secBreadths={};
@@ -1862,7 +1865,7 @@ function renderStats(){
     ${slTgtCard}
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
     <div class="st"><div class="st-l">Top Sector</div><div class="st-v" style="font-size:15px;color:var(--green)">${topSec}</div><div class="st-d">${topSecPct.toFixed(0)}% advancing</div></div>
-    <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${ENGINE_DATA?.rocketThreshold||10}%${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''} ${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
+    <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${_rsCeiling}%${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''} ${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
     <div class="st"><div class="st-l">Regime</div><div class="st-v">${
       ENGINE_DATA.regime==='bull'  ?'<span style="color:var(--green)">🐂 Bull</span>'
      :ENGINE_DATA.regime==='bear'  ?'<span style="color:var(--red)">🐻 Bear</span>'
@@ -3386,7 +3389,14 @@ function applyFilters(){
   const fPriceMin=parseFloat(document.getElementById('fPriceMin')?.value)||0;
   const fPriceMax=parseFloat(document.getElementById('fPriceMax')?.value)||0;
 
-  const _ceiling=ENGINE_DATA?.rocketThreshold||null;
+  // Recompute ceiling live from ALL using current fRocketTopPct — so changing Top% updates the table and status bar immediately
+  const _topPctLive=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
+  let _ceiling=ENGINE_DATA?.rocketThreshold||null;
+  if(ALL.length>0){
+    const _pcValsLive=ALL.map(x=>x.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+    const _cutLive=Math.max(0,Math.floor(_pcValsLive.length*(1-_topPctLive/100)));
+    _ceiling=_pcValsLive.length>0?+(_pcValsLive[_cutLive]||0).toFixed(2):_ceiling;
+  }
   FILT=ALL.filter(x=>{
     if(minScore>0&&x.rocketScore<minScore) return false;
     if(fvol>0){if((x.volume||0)<fvol)return false;}
@@ -3481,6 +3491,7 @@ function applyFilters(){
   SELECTED=new Set(FILT.map(s=>s.symbol));
 
   PG=1;renderHead();renderTable();renderStatusBar();saveFilterState();updateTabCounts();
+  if(ALL.length) try{renderStats();}catch(e){}
 }
 
 
@@ -3495,7 +3506,13 @@ function renderStatusBar(){
   if(minScore2>0)tags.push('Score≥'+minScore2);
   if(fscore>0)tags.push('F≥'+fscore);
   if(fMin1D>-Infinity)tags.push('1D≥'+fMin1D+'%');
-  const _sbCeiling=ENGINE_DATA?.rocketThreshold||null;
+  const _sbTopPct=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
+  let _sbCeiling=ENGINE_DATA?.rocketThreshold||null;
+  if(ALL.length>0){
+    const _sbPcVals=ALL.map(x=>x.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+    const _sbCut=Math.max(0,Math.floor(_sbPcVals.length*(1-_sbTopPct/100)));
+    _sbCeiling=_sbPcVals.length>0?+(_sbPcVals[_sbCut]||0).toFixed(2):_sbCeiling;
+  }
   if(_sbCeiling!=null)tags.push('1D<'+_sbCeiling+'%');
   if(fvol2>0){const n=fvol2;tags.push('Vol≥'+(n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n));}
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
@@ -4635,6 +4652,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
