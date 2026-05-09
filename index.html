@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-08 15:36 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-09 21:16 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -367,6 +367,7 @@ const CORE_FILTER_STORE='rs_core_filters';
 const SURV_CORR_STORE='rs_surv_corr';
 const MISSED_OPP_STORE='rs_missed_opp_v2';
 const REC_COUNT_STORE='rs_rec_count';
+const NSE_HOLIDAYS_STORE='rs_nse_holidays';
 let TRADEBOOK_STATS=null; // {avgWinPct, avgLossPct, medianWinPct, medianLossPct, winRate, avgHoldDays, p25Loss, p75Win, adaptiveSL, adaptiveTGT, minExitPct, roundTrips}
 let LAST_BUY_DATE_MAP={}; // {symbol → latest buy date string} — populated on tradebook parse
 let ORDERS_TODAY=null; // [{symbol, type, qty, price, time}] — COMPLETE orders only
@@ -635,6 +636,7 @@ async function pickDataFolder(){
   }catch(e){console.warn('Key migration:',e);}
 })();
 let NSE_BHAV={},NSE_52W={},NSE_SURV={},NSE_BULK={},NSE_BLOCK={};
+let NSE_HOLIDAYS=new Set(); // Set of 'YYYY-MM-DD' strings for NSE trading holidays
 let SURV_CUSTOM_RULES=[]; // [{key,column,label}] all surveillance rules — user-managed, persisted in brain
 let SURV_FILE_RULES=[]; // [{key,column,label,manual:false}] — populated from actual REG1 file in parseSurv; replaces SURV_DEFAULT_RULES
 let SURV_MISSING_RULES=new Set(); // keys of custom rules whose column was not found in the last REG1 file — all stocks blocked as precaution
@@ -1086,6 +1088,40 @@ function parseDeal(text,map){
     if((r['Buy/Sell']||'').trim().toUpperCase()==='BUY')map[sym]=true;
   });
 }
+function parseNSEHolidays(text){
+  // Format: Sr. No,Date,Day,Description — Date is DD-MMM-YYYY
+  const months={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+  const rows=parseCSV(text);
+  const dates=new Set();
+  rows.forEach(r=>{
+    const raw=(r['Date']||r['date']||'').trim();
+    const m=raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if(!m) return;
+    const dd=m[1].padStart(2,'0'), mo=months[m[2].toLowerCase()], yyyy=m[3];
+    if(mo) dates.add(`${yyyy}-${mo}-${dd}`);
+  });
+  NSE_HOLIDAYS=dates;
+  FS.set(NSE_HOLIDAYS_STORE,[...dates]);
+  console.log('NSE Holidays loaded:',dates.size,'dates');
+}
+// Returns number of trading days between two YYYY-MM-DD strings (exclusive of d1, inclusive of d2)
+function tradingDaysBetween(d1,d2){
+  if(!d1||!d2) return null;
+  const start=new Date(d1+'T12:00:00Z'), end=new Date(d2+'T12:00:00Z');
+  if(end<=start) return 0;
+  let count=0;
+  const cur=new Date(start);
+  cur.setUTCDate(cur.getUTCDate()+1); // start exclusive
+  while(cur<=end){
+    const dow=cur.getUTCDay(); // 0=Sun,6=Sat
+    if(dow!==0&&dow!==6){
+      const ds=cur.toISOString().slice(0,10);
+      if(!NSE_HOLIDAYS.has(ds)) count++;
+    }
+    cur.setUTCDate(cur.getUTCDate()+1);
+  }
+  return count;
+}
 function detectNSE(filename,content){
   const fn=filename.toLowerCase();
   if(fn.includes('bhavdata')||fn.includes('sec_bhav')){parseBhavdata(content);return'bhav';}
@@ -1093,6 +1129,7 @@ function detectNSE(filename,content){
   if(fn.startsWith('reg1')||fn.includes('reg1_ind')){parseSurv(content);return'surv';}
   if(fn.includes('bulk')){parseDeal(content,NSE_BULK);return'bulk';}
   if(fn.includes('block')){parseDeal(content,NSE_BLOCK);return'block';}
+  if(fn.includes('nse holidays')||fn.includes('nse_holidays')){parseNSEHolidays(content);return'holidays';}
   return null;
 }
 
@@ -3860,10 +3897,12 @@ async function hydrateSessionCSVsFromWorkspace(){
       FS.readUploadText('Positions.csv'),
       FS.readUploadText('Orders.csv'),
       FS.readUploadText('TRADEBOOK.csv'),
+      FS.readUploadText('NSE Holidays.csv'),
     ]),
     FS.readUploadFile('Reports-Daily-Multiple.zip'),
   ]);
-  const [holdFile,posFile,ordFile,tbFile]=csvFiles;
+  const [holdFile,posFile,ordFile,tbFile,holFile]=csvFiles;
+  if(holFile?.text) parseNSEHolidays(holFile.text);
   // Parse NSE ZIP to populate NSE_BHAV, NSE_52W, NSE_SURV etc. for this session
   if(zipEntry?.file&&typeof JSZip!=='undefined'){
     try{
@@ -4210,6 +4249,7 @@ async function processFiles(files){
     if(fname_l.includes('order')){ordFile=f;continue;}
     if(fname_l.includes('tradebook')){tbFile=f;continue;}
     if(fname_l.includes('all nse')){tvFile=f;continue;}
+    if(fname_l.includes('nse holidays')||fname_l.includes('nse_holidays')){const ht=await f.text();parseNSEHolidays(ht);continue;}
     if(!tvFile) tvFile=f; // fallback
   }
   if(!tvFile&&!nseZip){showToast('No files recognised. Drop ALL NSE.csv and/or the NSE ZIP.',4000,true);return;}
@@ -4395,13 +4435,25 @@ async function initApp(){
   const brain=await FS.init();
   if(brain){
     FS.load(brain);
-    // Load PREV_SNAP from brain (yesterday's snapshot, frozen for the session)
+    // Load NSE holidays first (needed for staleness check below)
+    try{const hols=brain[NSE_HOLIDAYS_STORE];if(Array.isArray(hols)&&hols.length) NSE_HOLIDAYS=new Set(hols);}catch(e){}
+
+    // Load PREV_SNAP from brain — discard if more than 1 trading day old (stale lagged data)
     try{
-      const today=new Date().toDateString();
+      const todayISO=getSessionDate();
       const snap=brain[SNAP_KEY], prev=brain[SNAP_PREV_KEY];
       let source=null;
-      if(snap&&snap.stocks&&(!snap.savedDate||snap.savedDate!==today)) source=snap;
+      if(snap&&snap.stocks&&snap.savedDate!==todayISO) source=snap;
       if(!source&&prev&&prev.stocks) source=prev;
+      if(source){
+        // Staleness check: how many trading days between snapshot and today?
+        const snapDate=source.savedDate||null;
+        const gap=snapDate?tradingDaysBetween(snapDate,todayISO):null;
+        if(gap!=null&&gap>1){
+          console.log('INIT: discarding stale snapshot from',snapDate,'('+gap+' trading days ago)');
+          source=null;
+        }
+      }
       if(source){
         if(source.cols){
           Object.entries(source.stocks).forEach(([sym,vals])=>{
@@ -4412,7 +4464,7 @@ async function initApp(){
           PREV_SNAP=source.stocks||source;
         }
         PREV_SNAP_META={savedDate:source.savedDate||null,regime:source.regime||null,marketBreadth:source.marketBreadth??null};
-        console.log('INIT: loaded prev-day snapshot'+(source.savedDate?' from '+source.savedDate:' (legacy)')+',',Object.keys(PREV_SNAP).length,'stocks');
+        console.log('INIT: loaded prev-day snapshot from',source.savedDate,',',Object.keys(PREV_SNAP).length,'stocks');
       }
     }catch(e){PREV_SNAP={};PREV_SNAP_META={};}
 
@@ -4490,6 +4542,9 @@ async function initApp(){
 
     // Step 2f: Restore tradebook stats
     try{const tb=brain[TRADEBOOK_STORE];if(tb){TRADEBOOK_STATS=tb;if(tb.lastBuyDateMap) LAST_BUY_DATE_MAP=tb.lastBuyDateMap;}}catch(e){}
+
+    // Step 2f1: Restore NSE holidays
+    try{const hols=brain[NSE_HOLIDAYS_STORE];if(Array.isArray(hols)&&hols.length) NSE_HOLIDAYS=new Set(hols);}catch(e){}
 
     // Step 2f2: Restore surveillance P&L correlation accumulator
     try{const sc=brain[SURV_CORR_STORE];if(sc&&typeof sc==='object') SURV_CORR_ACC=sc;}catch(e){}
@@ -4701,6 +4756,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
