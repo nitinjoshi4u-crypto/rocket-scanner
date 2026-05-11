@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-11 09:40 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-11 09:46 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1499,10 +1499,14 @@ function runEngine(raw, sessionTag){
   let REGIME_ACC = regimeAccMap[learningRegime] || null;
   const regimeSessions = REGIME_ACC ? (REGIME_ACC.sessions||0) : 0;
   // A "session" = one trading day. Multiple uploads on the same day only update correlations;
-  // they do NOT increment the session count or re-blend the running mean.
+  // they do NOT increment the session count or re-blend.
   const isNewDay = _isMarket && (!REGIME_ACC || REGIME_ACC.lastDate !== _today);
   const useRegimeCorr = regimeSessions >= 2;
-  const newN = regimeSessions + (isNewDay ? 1 : 0);
+  // EMA blend: α ramps from 1.0 (first session) down to 0.1 (steady state after ~10 sessions).
+  // This gives old correlations a natural half-life of ~7 sessions rather than accumulating forever.
+  // Same-day re-uploads use α=1 over existing hist so they refresh without shifting the weight.
+  const EMA_ALPHA = regimeSessions < 2 ? 1 : Math.max(0.1, 1 / regimeSessions);
+  const blendAlpha = isNewDay ? EMA_ALPHA : (regimeSessions > 0 ? 1/regimeSessions : 1);
 
   const learningCorr={};
   for(const f of FEATS){
@@ -1510,8 +1514,8 @@ function runEngine(raw, sessionTag){
     const hist = (useRegimeCorr && REGIME_ACC && REGIME_ACC.corr) ? REGIME_ACC.corr[f] : null;
     if(todayCorr===null)  learningCorr[f]=hist!=null?hist:0;
     else if(hist===null)  learningCorr[f]=todayCorr;
-    else if(!isNewDay)    learningCorr[f]=hist+(todayCorr-hist)/newN; // same day re-upload: refresh today's contribution, N unchanged
-    else                  learningCorr[f]=hist+(todayCorr-hist)/newN; // new day: increment N and blend
+    else if(!isNewDay)    learningCorr[f]=hist+(todayCorr-hist)*(1/Math.max(1,regimeSessions)); // same-day: replace today's slice without new session
+    else                  learningCorr[f]=hist+(todayCorr-hist)*blendAlpha; // new day: EMA blend
   }
 
   // Save to regime-specific accumulator
@@ -4762,6 +4766,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
