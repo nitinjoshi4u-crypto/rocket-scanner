@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-09 21:16 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-11 09:40 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1155,9 +1155,13 @@ function pctRank(arr){
 // ── Engine ──
 function runEngine(raw, sessionTag){
   if(!raw.length) return;
-  // Session dedup: don't re-increment if same data uploaded again
-  // Market hours guard: don't accumulate correlations outside 9:00-16:00 IST
-  const isNewSession = (!sessionTag || !ACC_CORR || ACC_CORR.lastTag !== sessionTag) && isMarketHours();
+  // isNewSession = true only on first upload of a new trading day (per regime accumulator).
+  // Same-day re-uploads recompute correlations but don't increment session count or blend again.
+  // Market hours guard: never accumulate outside 9:00-16:00 IST.
+  const _today=getSessionDate();
+  const _isMarket=isMarketHours();
+  // Will be resolved per-regime below after REGIME_ACC is known. Placeholder for legacy ACC_CORR update.
+  const isNewSession = _isMarket; // legacy — not used for regime accumulator decisions
 
   // ── Auto-detect columns from CSV headers ──
   const allHeaders = Object.keys(raw[0]);
@@ -1494,28 +1498,30 @@ function runEngine(raw, sessionTag){
   const regimeStoreMap = {bull: CORR_BULL_STORE, bear: CORR_BEAR_STORE, neutral: CORR_NEUT_STORE};
   let REGIME_ACC = regimeAccMap[learningRegime] || null;
   const regimeSessions = REGIME_ACC ? (REGIME_ACC.sessions||0) : 0;
-  const useRegimeCorr = regimeSessions >= 2; // need ≥2 sessions in this regime to trust it
-  const newN = regimeSessions + (isNewSession ? 1 : 0); // session count after this update
+  // A "session" = one trading day. Multiple uploads on the same day only update correlations;
+  // they do NOT increment the session count or re-blend the running mean.
+  const isNewDay = _isMarket && (!REGIME_ACC || REGIME_ACC.lastDate !== _today);
+  const useRegimeCorr = regimeSessions >= 2;
+  const newN = regimeSessions + (isNewDay ? 1 : 0);
 
   const learningCorr={};
   for(const f of FEATS){
-    const today=isNaN(targetCorrToday[f])?null:targetCorrToday[f];
-    // Pure regime-specific history only — no cross-regime fallback
+    const todayCorr=isNaN(targetCorrToday[f])?null:targetCorrToday[f];
     const hist = (useRegimeCorr && REGIME_ACC && REGIME_ACC.corr) ? REGIME_ACC.corr[f] : null;
-    if(today===null)     learningCorr[f]=hist!=null?hist:0;
-    else if(hist===null) learningCorr[f]=today;
-    else if(!isNewSession) learningCorr[f]=hist; // same session re-upload, don't blend
-    else                 learningCorr[f]=hist+(today-hist)/newN; // running mean
+    if(todayCorr===null)  learningCorr[f]=hist!=null?hist:0;
+    else if(hist===null)  learningCorr[f]=todayCorr;
+    else if(!isNewDay)    learningCorr[f]=hist+(todayCorr-hist)/newN; // same day re-upload: refresh today's contribution, N unchanged
+    else                  learningCorr[f]=hist+(todayCorr-hist)/newN; // new day: increment N and blend
   }
 
   // Save to regime-specific accumulator
-  const newRegimeAcc={corr:{},sessions:regimeSessions+(isNewSession?1:0),
-                      lastUpdated:new Date().toISOString(),laggedNote:laggedNote,regime:learningRegime,
-                      observedRegime:regime};
+  const newRegimeAcc={corr:{},sessions:regimeSessions+(isNewDay?1:0),
+                      lastDate:_today,lastUpdated:new Date().toISOString(),
+                      laggedNote:laggedNote,regime:learningRegime,observedRegime:regime};
   for(const f of FEATS) newRegimeAcc.corr[f]=learningCorr[f];
   if(learningRegime==='bull')      ACC_CORR_BULL=newRegimeAcc;
   else if(learningRegime==='bear') ACC_CORR_BEAR=newRegimeAcc;
-  else                     ACC_CORR_NEUT=newRegimeAcc;
+  else                             ACC_CORR_NEUT=newRegimeAcc;
   FS.set(regimeStoreMap[learningRegime],newRegimeAcc);
 
   const scoreAccMap = {bull: ACC_CORR_BULL, bear: ACC_CORR_BEAR, neutral: ACC_CORR_NEUT};
@@ -4756,6 +4762,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
