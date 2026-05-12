@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-12 10:08 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 10:12 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1576,15 +1576,11 @@ function runEngine(raw, sessionTag){
       rocketScore:score, tier, flags,
       // Calculated SL/Target per stock — adaptive from tradebook if available
       slPct: (()=>{
-        const rSL=TRADEBOOK_STATS?.regimeStats?.[regime]?.sl;
-        if(rSL) return -rSL;
         if(TRADEBOOK_STATS&&TRADEBOOK_STATS.adaptiveSL) return -TRADEBOOK_STATS.adaptiveSL;
         const atr=K.atr_pct?d[K.atr_pct]:null;
         return atr>0 ? -(atr*1.5) : null;
       })(),
       tgtPct: (()=>{
-        const rTGT=TRADEBOOK_STATS?.regimeStats?.[regime]?.tgt;
-        if(rTGT) return rTGT;
         if(TRADEBOOK_STATS&&TRADEBOOK_STATS.adaptiveTGT) return TRADEBOOK_STATS.adaptiveTGT;
         const atr=K.atr_pct?d[K.atr_pct]:null;
         const p1w=K.perf_1w?d[K.perf_1w]:null;
@@ -1858,17 +1854,12 @@ function renderStats(){
       <div class="st"><div class="st-l">${bookedLabel}</div><div class="st-v" style="color:${booked.total>=0?'var(--green)':'var(--red)'}">${booked.total>=0?'+':'−'}₹${Math.round(Math.abs(booked.total)).toLocaleString('en-IN')}</div><div class="st-d">${dateLabel} · ${srcLabel} · net of charges</div></div>`;
   }
 
-  // SL/TGT card — regime-specific when ≥30 trips, else full-history
   const slTgtCard=(()=>{
     if(!TRADEBOOK_STATS?.adaptiveSL) return '';
-    const _reg=CURRENT_REGIME||ENGINE_DATA?.regime||null;
-    const _regStats=_reg&&TRADEBOOK_STATS?.regimeStats?.[_reg];
-    const _sl=(_regStats?.sl||TRADEBOOK_STATS.adaptiveSL).toFixed(2);
+    const _sl=TRADEBOOK_STATS.adaptiveSL.toFixed(2);
     const _tgt=(getEffectiveTgtPct()||TRADEBOOK_STATS.adaptiveTGT).toFixed(2);
-    const _slNum=parseFloat(_sl);
-    const rr=(_slNum>0?(parseFloat(_tgt)/_slNum):0).toFixed(2);
-    const _src=_regStats?`${_reg} regime · ${_regStats.trips} trips`:'tradebook-derived';
-    return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · ${_src}</div></div>`;
+    const rr=(parseFloat(_sl)>0?(parseFloat(_tgt)/parseFloat(_sl)):0).toFixed(2);
+    return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · tradebook-derived</div></div>`;
   })();
 
   document.getElementById('statsBar').innerHTML=`
@@ -2363,8 +2354,7 @@ function renderPerformance(){
   let timeStopHtml='', timeStopTblObj=null;
   (function(){
     if(!allTrips.length) return;
-    const _posReg=CURRENT_REGIME||ENGINE_DATA?.regime||null;
-    const adaptiveSL=(_posReg&&TRADEBOOK_STATS?.regimeStats?.[_posReg]?.sl)||TRADEBOOK_STATS?.adaptiveSL||3.5;
+    const adaptiveSL=TRADEBOOK_STATS?.adaptiveSL||3.5;
     const adaptiveTGT=getEffectiveTgtPct()||(TRADEBOOK_STATS?.adaptiveTGT||3.7);
     // ── Empirical thresholds from this user's tradebook ──
     // Find the hold-day cutoff where the win rate crosses below 60%.
@@ -3139,9 +3129,6 @@ function getMissedOppNudge(){
 function getEffectiveTgtPct(){
   const nudge=getMissedOppNudge();
   const round05=v=>+(Math.round(v/0.05)*0.05).toFixed(2);
-  const reg=CURRENT_REGIME||ENGINE_DATA?.regime||null;
-  const regTGT=reg&&TRADEBOOK_STATS?.regimeStats?.[reg]?.tgt;
-  if(regTGT) return round05(regTGT+nudge);
   if(TRADEBOOK_STATS && TRADEBOOK_STATS.adaptiveTGT > 0) return round05(TRADEBOOK_STATS.adaptiveTGT + nudge);
   const vals = (typeof FILT !== 'undefined' ? FILT : []).map(s => s.tgtPct).filter(v => v != null && isFinite(v) && v > 0);
   if(!vals.length) return null;
@@ -4046,38 +4033,6 @@ function parseTradebook(text){
   stats.lastBuyDateMap=lastBuyDateMap;
   LAST_BUY_DATE_MAP=lastBuyDateMap;
 
-  // ── Regime-specific SL/TGT ──
-  // Join trips against rs_regime_cal; compute adaptiveSL/TGT per regime.
-  // Only used when regime has ≥30 trips — otherwise full-history values are more reliable.
-  try{
-    const regCal=FS.get(REGIME_CAL_STORE)||{};
-    const calDates=Object.keys(regCal).sort();
-    const nearestReg=date=>{
-      if(!date) return null;
-      if(regCal[date]) return regCal[date];
-      if(!calDates.length) return null;
-      let lo=0,hi=calDates.length-1,best=0;
-      while(lo<=hi){const mid=(lo+hi)>>1;if(calDates[mid]<=date){best=mid;lo=mid+1;}else hi=mid-1;}
-      return regCal[calDates[best]]||null;
-    };
-    const regTrips={bull:[],bear:[],neutral:[]};
-    tripsData.forEach(r=>{
-      const reg=nearestReg(r.sellDate);
-      if(reg&&regTrips[reg]) regTrips[reg].push(r);
-    });
-    const round05=v=>+(Math.round(v/0.05)*0.05).toFixed(2);
-    const regStats={};
-    Object.entries(regTrips).forEach(([reg,trips])=>{
-      if(trips.length<30) return; // insufficient — fall back to full-history
-      const wPcts=trips.filter(r=>r.pnlPct>0).map(r=>r.pnlPct).sort((a,b)=>a-b);
-      const lPcts=trips.filter(r=>r.pnlPct<=0).map(r=>r.pnlPct).sort((a,b)=>a-b);
-      const pct=(arr,p)=>arr.length?arr[Math.min(Math.floor(arr.length*p),arr.length-1)]:null;
-      const p75=pct(wPcts,0.75), medL=pct(lPcts,0.5);
-      if(p75==null||medL==null) return;
-      regStats[reg]={sl:round05(Math.abs(medL)),tgt:round05(Math.abs(p75)),trips:trips.length};
-    });
-    if(Object.keys(regStats).length) stats.regimeStats=regStats;
-  }catch(e){console.warn('Regime SL/TGT compute failed:',e);}
 
   console.log('TRADEBOOK:',stats.roundTrips,'round trips,',stats.winners,'winners ('+stats.winRate+'%), adaptive SL:'+stats.adaptiveSL+'% TGT:'+stats.adaptiveTGT+'%');
   return stats;
@@ -4714,6 +4669,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
