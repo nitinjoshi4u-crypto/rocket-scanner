@@ -314,7 +314,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Top-up %</span><input type="number" id="fTopupAlloc" value="50" placeholder="50" min="10" max="100" step="10" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Allocation % for top-up candidates vs a fresh buy. 50 means top-up gets half the normal score-weighted allocation. Default 50%."></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Top %</span><input type="number" id="fRocketTopPct" value="10" placeholder="10" min="0.5" max="50" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="saveFilterState();applyFilters()" title="Top X% of post-filter stocks by 1D gain qualify as Rockets for engine learning. Default 10%."></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Top %</span><span id="fRocketTopPct" style="display:inline-block;width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--orange);font-family:'DM Mono',monospace;font-size:12px;font-weight:700" title="Top 10% of post-filter stocks by 1D gain qualify as Rockets (hardcoded)">10%</span></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
   </div>
   <div class="status-bar" id="statusBar"></div>
@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-11 14:14 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 09:43 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1391,9 +1391,8 @@ function runEngine(raw, sessionTag){
     valid.forEach((x,ri)=>{r[x.i]=ri/(valid.length-1||1);});
     return r;
   }
-  // ── Resolve dynamic rocket threshold: top X% of post-filter universe by 1D gain ──
-  const _topPctEl=document.getElementById('fRocketTopPct');
-  const _topPct=parseFloat(_topPctEl?.value)||10;
+  // ── Resolve rocket threshold: top 10% of post-filter universe by 1D gain ──
+  const _topPct=10;
   const _pcVals=filtered.map(d=>K.price_change?d[K.price_change]:null).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
   const _cutoffIdx=Math.max(0,Math.floor(_pcVals.length*(1-_topPct/100)));
   const ROCKET_THRESHOLD=_pcVals.length>0?+(_pcVals[_cutoffIdx]||0).toFixed(2):rocketPct;
@@ -1532,12 +1531,12 @@ function runEngine(raw, sessionTag){
   const SCORE_ACC = scoreAccMap[regime] || null;
   const scoreSessions = SCORE_ACC ? (SCORE_ACC.sessions||0) : 0;
   const scoreUseRegimeCorr = scoreSessions >= 2;
-  const hasScoreCorr = !!(SCORE_ACC && SCORE_ACC.corr && Object.keys(SCORE_ACC.corr).length);
   const targetCorr={};
   for(const f of FEATS){
-    if(hasScoreCorr && SCORE_ACC.corr[f]!=null){
+    // Priority: regime accumulator (≥2 sessions) → today's fresh correlations → 0
+    if(scoreUseRegimeCorr && SCORE_ACC.corr[f]!=null){
       targetCorr[f]=SCORE_ACC.corr[f];
-    } else if(learningRegime===regime && learningCorr[f]!=null){
+    } else if(learningCorr[f]!=null){
       targetCorr[f]=learningCorr[f];
     } else {
       targetCorr[f]=0;
@@ -1868,14 +1867,7 @@ function renderStats(){
   const scoreMin=scores.length?Math.min(...scores).toFixed(1):'—';
   const scoreSpread=scores.length?(Math.max(...scores)-Math.min(...scores)).toFixed(1):'—';
 
-  // Rockets today: recompute live from ALL using current fRocketTopPct so the card updates when Top% changes
-  const _rsTopPct=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
-  let _rsCeiling=ENGINE_DATA?.rocketThreshold||10;
-  if(ALL.length>0){
-    const _rsPcVals=ALL.map(s=>s.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
-    const _rsCut=Math.max(0,Math.floor(_rsPcVals.length*(1-_rsTopPct/100)));
-    _rsCeiling=_rsPcVals.length>0?+(_rsPcVals[_rsCut]||0).toFixed(2):_rsCeiling;
-  }
+  const _rsCeiling=ENGINE_DATA?.rocketThreshold||10;
   const rocketCount=ALL.filter(s=>s.priceChange!=null&&s.priceChange>=_rsCeiling).length;
 
   // Compute top sector by breadth
@@ -3516,14 +3508,7 @@ function applyFilters(){
   const fPriceMin=parseFloat(document.getElementById('fPriceMin')?.value)||0;
   const fPriceMax=parseFloat(document.getElementById('fPriceMax')?.value)||0;
 
-  // Recompute ceiling live from ALL using current fRocketTopPct — so changing Top% updates the table and status bar immediately
-  const _topPctLive=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
-  let _ceiling=ENGINE_DATA?.rocketThreshold||null;
-  if(ALL.length>0){
-    const _pcValsLive=ALL.map(x=>x.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
-    const _cutLive=Math.max(0,Math.floor(_pcValsLive.length*(1-_topPctLive/100)));
-    _ceiling=_pcValsLive.length>0?+(_pcValsLive[_cutLive]||0).toFixed(2):_ceiling;
-  }
+  const _ceiling=ENGINE_DATA?.rocketThreshold||null;
   FILT=ALL.filter(x=>{
     if(minScore>0&&x.rocketScore<minScore) return false;
     if(fvol>0){if((x.volume||0)<fvol)return false;}
@@ -3633,13 +3618,7 @@ function renderStatusBar(){
   if(minScore2>0)tags.push('Score≥'+minScore2);
   if(fscore>0)tags.push('F≥'+fscore);
   if(fMin1D>-Infinity)tags.push('1D≥'+fMin1D+'%');
-  const _sbTopPct=parseFloat(document.getElementById('fRocketTopPct')?.value)||10;
-  let _sbCeiling=ENGINE_DATA?.rocketThreshold||null;
-  if(ALL.length>0){
-    const _sbPcVals=ALL.map(x=>x.priceChange).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
-    const _sbCut=Math.max(0,Math.floor(_sbPcVals.length*(1-_sbTopPct/100)));
-    _sbCeiling=_sbPcVals.length>0?+(_sbPcVals[_sbCut]||0).toFixed(2):_sbCeiling;
-  }
+  const _sbCeiling=ENGINE_DATA?.rocketThreshold||null;
   if(_sbCeiling!=null)tags.push('1D<'+_sbCeiling+'%');
   if(fvol2>0){const n=fvol2;tags.push('Vol≥'+(n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':n));}
   const capital=parseFloat(document.getElementById('fCapital').value)||0;
@@ -3683,7 +3662,6 @@ function clearFilters(){
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='70';
-  const rktEl=document.getElementById('fRocketTopPct');if(rktEl)rktEl.value='10';
   VOL_AUTO=true;setAutoVolume();
   applyFilters();
   localStorage.removeItem(SCANNER_STORE);
@@ -4707,7 +4685,7 @@ function saveFilterState(){
     fMin1D:document.getElementById('fMin1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
-    rocketTopPct:document.getElementById('fRocketTopPct')?.value||'10',
+    rocketTopPct:'10',
     reDrop:document.getElementById('fReDrop')?.value||'1',
     topupAlloc:document.getElementById('fTopupAlloc')?.value||'50',
     sortCol:SCOL,
@@ -4725,7 +4703,6 @@ function loadFilterState(){
     if(state.fMin1D){const el=document.getElementById('fMin1D');if(el)el.value=state.fMin1D;}
     if(state.capital){const el=document.getElementById('fCapital');if(el)el.value=state.capital;}
     if(state.maxAlloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.maxAlloc;}
-    if(state.rocketTopPct){const el=document.getElementById('fRocketTopPct');if(el)el.value=state.rocketTopPct;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
     if(state.topupAlloc!=null){const el=document.getElementById('fTopupAlloc');if(el)el.value=state.topupAlloc;}
     if(state.volMult){const el=document.getElementById('fVolMult');if(el)el.value=state.volMult;}
@@ -4830,6 +4807,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
