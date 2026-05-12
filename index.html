@@ -314,7 +314,6 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--fire)">Top-up %</span><input type="number" id="fTopupAlloc" value="50" placeholder="50" min="10" max="100" step="10" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Allocation % for top-up candidates vs a fresh buy. 50 means top-up gets half the normal score-weighted allocation. Default 50%."></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Top %</span><span id="fRocketTopPct" style="display:inline-block;width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--orange);font-family:'DM Mono',monospace;font-size:12px;font-weight:700" title="Top 10% of post-filter stocks by 1D gain qualify as Rockets (hardcoded)">10%</span></div>
    <button class="btn" id="basketBtn" onclick="exportBasket()" disabled style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber);font-weight:700" title="Export selected stocks as Zerodha basket order">🧺 Buy Basket <span id="basketCount"></span></button>
   </div>
   <div class="status-bar" id="statusBar"></div>
@@ -333,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-12 10:18 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 10:24 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -4552,7 +4551,6 @@ function saveFilterState(){
     fMin1D:document.getElementById('fMin1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
-    rocketTopPct:'10',
     reDrop:document.getElementById('fReDrop')?.value||'1',
     topupAlloc:document.getElementById('fTopupAlloc')?.value||'50',
     sortCol:SCOL,
@@ -4674,6 +4672,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
