@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-12 10:05 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 10:08 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3128,27 +3128,10 @@ function getMissedOppNudge(){
   try{
     const store=FS.get(MISSED_OPP_STORE);
     if(!store) return 0;
-    const reg=CURRENT_REGIME||ENGINE_DATA?.regime||null;
-    const regCal=reg?FS.get(REGIME_CAL_STORE)||{}:{};
-    const calDates=Object.keys(regCal).sort();
-    const nearestReg=date=>{
-      if(!date||!calDates.length) return null;
-      if(regCal[date]) return regCal[date];
-      let lo=0,hi=calDates.length-1,best=0;
-      while(lo<=hi){const mid=(lo+hi)>>1;if(calDates[mid]<=date){best=mid;lo=mid+1;}else hi=mid-1;}
-      return regCal[calDates[best]]||null;
-    };
-    let entries=Object.entries(store)
-      .filter(([,e])=>e&&typeof e==='object'&&isFinite(e.avg)&&e.count>0);
-    // Filter to current regime when we have enough regime-specific data (≥5 dates)
-    if(reg&&calDates.length){
-      const regEntries=entries.filter(([date])=>nearestReg(date)===reg);
-      if(regEntries.length>=5) entries=regEntries;
-    }
+    const entries=Object.values(store).filter(e=>e&&typeof e==='object'&&isFinite(e.avg)&&e.count>0);
     if(!entries.length) return 0;
-    const vals=entries.map(([,e])=>e);
-    const totalCount=vals.reduce((s,e)=>s+e.count,0);
-    const weightedSum=vals.reduce((s,e)=>s+e.avg*e.count,0);
+    const totalCount=entries.reduce((s,e)=>s+e.count,0);
+    const weightedSum=entries.reduce((s,e)=>s+e.avg*e.count,0);
     return +((weightedSum/totalCount)*0.25).toFixed(2);
   }catch(e){return 0;}
 }
@@ -4731,6 +4714,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
