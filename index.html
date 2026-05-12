@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-12 11:31 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 11:32 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3044,7 +3044,7 @@ function getCols(){
   const fixed=[
     {key:'chk',label:'',s:0},
     {key:'rocketScore',label:'Score',s:1},{key:'symbol',label:'Symbol',s:1},
-    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'buyRange',label:'Buy Range',s:0},{key:'delivPct',label:'Deliv%',s:1},
+    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'buyRange',label:'Max Entry',s:0},{key:'delivPct',label:'Deliv%',s:1},
     {key:'alloc',label:'Alloc ₹',s:0},{key:'volume',label:'Volume',s:1},
   ];
   // Dynamic columns from mRMR features — skip any that are all null across displayed stocks
@@ -3328,7 +3328,7 @@ function renderTable(){
       <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:var(--t1)">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
-      <td>${(()=>{const vwap=s.vwap;if(!vwap||vwap<=0)return'<span style="color:var(--t3)">—</span>';const tgt=getEffectiveTgtPct()||3.7;const ceiling=ENGINE_DATA?.rocketThreshold||10;const pc=s.priceChange||0;const openPrice=s.price/(1+pc/100);const ceilingPrice=openPrice*(1+ceiling/100);const hi=tickPrice(ceilingPrice/(1+tgt/100));const lo=tickPrice(vwap);const cur=s.price||0;const inRange=cur<=hi+0.01;const hiC=inRange?'var(--cyan)':'var(--red)';const loC=cur<=lo+0.01?'var(--green)':'var(--amber)';return`<span style="font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap"><span style="color:${loC}" title="VWAP — ideal entry">₹${lo.toFixed(2)}</span><span style="color:var(--t3)"> – </span><span style="color:${hiC}" title="Max entry: buying here still leaves full TGT% before rocket ceiling">₹${hi.toFixed(2)}</span></span>`})()}</td>
+      <td>${(()=>{const pc=s.priceChange||0;if(!s.price||!isFinite(pc))return'<span style="color:var(--t3)">—</span>';const tgt=getEffectiveTgtPct()||3.7;const ceiling=ENGINE_DATA?.rocketThreshold||10;const openPrice=s.price/(1+pc/100);const ceilingPrice=openPrice*(1+ceiling/100);const hi=tickPrice(ceilingPrice/(1+tgt/100));const ok=s.price<=hi+0.01;return`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${ok?'var(--cyan)':'var(--red)'}" title="Max entry price — buying here still leaves full TGT% (${tgt.toFixed(2)}%) before the ${ceiling}% ceiling">₹${hi.toFixed(2)}</span>`})()}</td>
       <td>${fDel(s.delivPct)}</td>
       <td class="alloc-cell" data-sym="${s.symbol}">${(()=>{
         if(!am) return '<span style="color:var(--t3);font-size:11px">—</span>';
@@ -4669,6 +4669,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
