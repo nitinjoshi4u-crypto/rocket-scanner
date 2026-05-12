@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-12 10:12 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-12 10:16 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3020,12 +3020,14 @@ function renderMethodology(){
     </nav>
     <div id="meth-hf-wrap">${hardFiltersHTML}</div>
     <div id="meth-regime">${regimeCardHTML}</div>
-    <h3 id="meth-engine" style="margin-top:18px">Scoring Engine — Regime-Adaptive mRMR + NSE Data Intelligence</h3>
+    <h3 id="meth-engine" style="margin-top:18px">Scoring Engine — Continuous Learning mRMR</h3>
     <div class="m-grid">
-      <div class="m-card"><h4>🎯 Quality-Adjusted Target</h4><p>Stocks that moved <strong>≥${E.rocketThreshold||10}% up</strong>, plus yesterday's rockets that <strong>held today</strong> (didn't collapse beyond hold threshold). Yesterday's rockets that collapsed get reclassified as 0 — the engine <em>unlearns</em> features that predicted fragile spikes. Over sessions, this trains the engine to recommend <strong>durable</strong> moves, not one-day spikes.</p></div>
-      <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Regime Detection</h4><p>Market classified as <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% breadth). Bull ≥55%, Bear &lt;35%. Regime is shown for context — a single shared accumulator learns from every session regardless of regime, ensuring the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
-      <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s data and fed into mRMR. Stocks in strong sectors score higher in bull markets; stocks outperforming weak sectors score higher in bear markets.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed stocks (exact NSE REG1 column matching — see Hard Filters table below), low liquidity (shareholders &lt;${CORE_FILTERS.liq.minSh.toLocaleString()} or volume &lt;${CORE_FILTERS.liq.minVol.toLocaleString()}), Piotroski F-Score ≤ ${CORE_FILTERS.fscore.maxScore}, delivery &lt;${CORE_FILTERS.deliv.minDeliv}%. Peak retention is scored by mRMR — fading stocks naturally rank lower without a hard cutoff. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚀 What is a Rocket?</h4><p>Every trading day, regardless of what the broader market is doing, a small subset of NSE stocks moves <strong>≥${E.rocketThreshold||10}% intraday</strong>. These are Rockets. They don't happen randomly — stocks that become rockets tend to share measurable characteristics <em>the day before</em> they move. The engine's job is to find those stocks before the move, not explain them after.</p></div>
+      <div class="m-card"><h4>📡 How the Engine Learns</h4><p>After each session, the engine correlates <strong>yesterday's feature values</strong> against <strong>today's actual rockets</strong>. Features that consistently appeared in rockets get higher weight; features that didn't get lower weight. Tomorrow's recommendations are stocks that look like yesterday's rockets — but haven't moved yet. The target label is quality-adjusted: yesterday's rockets that <em>held</em> today reinforce the signal; those that collapsed are treated as 0, so the engine learns to find durable moves, not fragile spikes.</p></div>
+      <div class="m-card"><h4>🎯 Buy Zone — Runway to Target</h4><p>A recommended stock must still have <strong>runway to reach the target</strong> — it shouldn't be overextended at entry. Stocks are filtered to those where <em>price ≤ VWAP + 0.5×ATR</em>, meaning the intraday move hasn't happened yet and a sensible entry is still available. Stocks already at or above the rocket threshold are also hidden — their runway is exhausted.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), low liquidity (shareholders &lt;${CORE_FILTERS.liq.minSh.toLocaleString()} or volume &lt;${CORE_FILTERS.liq.minVol.toLocaleString()}), Piotroski F-Score ≤${CORE_FILTERS.fscore.maxScore}, delivery &lt;${CORE_FILTERS.deliv.minDeliv}%. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)} stocks.</p></div>
+      <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Market Regime</h4><p>Today's market: <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% stocks advancing). Bull ≥55%, Bear &lt;35%. Regime is shown for context only — the learning accumulator is regime-agnostic, so the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
+      <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s full universe and fed into mRMR as features. Stocks outperforming their sector score higher regardless of market direction.</p></div>
     </div>
 
     <p style="color:var(--t3);font-style:italic;margin-top:4px">⚠ Quantitative screening only. Not financial advice. Past momentum ≠ future returns.</p>
@@ -3036,7 +3038,7 @@ function renderMethodology(){
     <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Features that duplicate information from a stronger feature (|r| ≥ 0.7). Each appears once — safe to remove from your ALL NSE CSV or exclude via Weakest Contributors below.</p>
     <div class="corr-wrap">${pairsHTML}</div>
     <h3 id="meth-weak" style="margin-top:28px">Weakest Contributors — CSV Pruning Advisory <span style="font-size:12px;color:var(--t3);font-weight:400">(${_weakCount})</span></h3>
-    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Features from the bottom 20% by mRMR score that are weak across <strong>all</strong> regimes with sufficient data. These are safe to remove from your ALL NSE CSV. Features that are strong in any regime are excluded from this list.</p>
+    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Features from the bottom 20% by mRMR score with consistently weak correlation to rockets (|r| &lt; 0.05). Safe to remove from your ALL NSE CSV.</p>
     <div class="corr-wrap">${weakHTML}</div>`;
   setTimeout(()=>{_methTbls.hf?.render();_methTbls.sc?.render();},0);
 }
@@ -4669,6 +4671,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
