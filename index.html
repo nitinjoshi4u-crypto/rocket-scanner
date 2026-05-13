@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 13:02 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 13:08 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2811,27 +2811,30 @@ function renderMethodology(){
   // (lower mRMR) is a drop candidate. Each feature is listed at most once —
   // attributed to the strongest feature that makes it redundant.
   const allPairs=[];
-  for(let a=0;a<sorted.length;a++){
-    for(let b=a+1;b<sorted.length;b++){
-      const f1=sorted[a],f2=sorted[b];
-      if(!E.mrmr[f1]||!E.mrmr[f2]) continue;
-      const r=(E.interCorr&&E.interCorr[f1+'|'+f2])||0;
-      if(Math.abs(r)>=0.7) allPairs.push({f1,f2,r});
+  const hasInterCorr = E.interCorr && Object.keys(E.interCorr).length > 0;
+  if(hasInterCorr){
+    for(let a=0;a<sorted.length;a++){
+      for(let b=a+1;b<sorted.length;b++){
+        const f1=sorted[a],f2=sorted[b];
+        if(!E.mrmr[f1]||!E.mrmr[f2]) continue;
+        const r=E.interCorr[f1+'|'+f2]??0;
+        if(r!==0) allPairs.push({f1,f2,r});
+      }
     }
+    allPairs.sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
   }
-  allPairs.sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+  // Show top 30 most-correlated pairs (the candidates most worth removing)
+  const topPairs=allPairs.slice(0,30);
 
   let pairsHTML='';
-  const hasInterCorr = E.interCorr && Object.keys(E.interCorr).length > 0;
   if(!hasInterCorr){
     pairsHTML='<p style="color:var(--t3);font-style:italic">Inter-feature correlations not available — upload ALL NSE.csv once to compute and persist.</p>';
-  } else if(allPairs.length===0){
-    pairsHTML='<p style="color:var(--t3);font-style:italic">No feature pairs with |r| ≥ 0.7 found — low redundancy across all features.</p>';
+  } else if(topPairs.length===0){
+    pairsHTML='<p style="color:var(--t3);font-style:italic">No feature pairs found — all features appear independent.</p>';
   } else {
     // Deduplicate: each feature appears as a drop candidate at most once
     const dropMap={}; // feat → {redundantWith, r, keepScore, dropScore}
-    for(const {f1,f2,r} of allPairs){
-      if(!E.mrmr[f1]||!E.mrmr[f2]) continue;
+    for(const {f1,f2,r} of topPairs){
       const s1=E.mrmr[f1].score, s2=E.mrmr[f2].score;
       const keep=s1>=s2?f1:f2, drop=s1>=s2?f2:f1;
       // Only mark if not already marked as a drop candidate
@@ -2855,12 +2858,12 @@ function renderMethodology(){
       </tr>`;
     }
     pairsHTML+='</tbody></table>';
-    pairsHTML+=`<p style="color:var(--t3);font-size:11px;margin-top:8px">${dropList.length} drop candidates from ${allPairs.length} redundant pairs. Each feature listed once — attributed to its strongest overlapping partner.</p>`;
+    pairsHTML+=`<p style="color:var(--t3);font-size:11px;margin-top:8px">${dropList.length} drop candidates from top ${topPairs.length} most-correlated pairs (of ${allPairs.length} total). Each feature listed once — attributed to its strongest overlapping partner.</p>`;
   }
 
   // Section counts for display
   const _featureCount=sorted.length;
-  const _redundantCount=allPairs.length;
+  const _redundantCount=topPairs.length;
 
   const hardFiltersHTML=buildHardFilterMethodologyHTML(E);
   mc.innerHTML=`
@@ -2888,8 +2891,8 @@ function renderMethodology(){
 
     <h3 id="meth-weights" style="margin-top:28px">Feature Weights <span style="font-size:12px;color:var(--t3);font-weight:400">(${_featureCount})</span></h3>
     <div class="corr-wrap">${wtHTML}</div>
-    <h3 id="meth-redundant" style="margin-top:28px">Redundant Features — Drop Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_redundantCount} pairs)</span></h3>
-    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Features that duplicate information from a stronger feature (|r| ≥ 0.7). Each appears once — safe to remove from your ALL NSE CSV.</p>
+    <h3 id="meth-redundant" style="margin-top:28px">Redundant Features — Drop Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(top ${_redundantCount} pairs)</span></h3>
+    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Top 30 most-correlated feature pairs. Each drop candidate listed once — the weaker mRMR partner. Safe to remove from your ALL NSE CSV to reduce noise.</p>
     <div class="corr-wrap">${pairsHTML}</div>`;
   setTimeout(()=>{_methTbls.hf?.render();_methTbls.sc?.render();},0);
 }
@@ -4525,6 +4528,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
