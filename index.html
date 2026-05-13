@@ -310,6 +310,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl">Min 1D %</span><input type="number" id="fMin1D" placeholder="e.g. 2" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this = Min Vol floor"></div>
+   <div class="fg"><span class="fg-lbl" style="font-size:8px">Min TV ₹</span><input type="number" id="fMinTurnover" placeholder="e.g. 1000000" min="0" step="500000" style="width:90px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min turnover (Price × Volume) in ₹. Blank = no filter. Recommended: 1000000 (₹10L) to ensure tradeable liquidity regardless of price."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Capital ₹</span><input type="number" id="fCapital" placeholder="e.g. 100000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
@@ -332,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 14:31 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 14:39 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1166,6 +1167,7 @@ function runEngine(raw, sessionTag){
     atr_pct:      findKey(/average_true_range_.*14.*1_day|atr_.*14.*1_day/),
     perf_1w:      findKey(/performance.*1_week|perf.*1_week|1_week.*perf/),
     volume:       findKey(/^volume_1_day$|^volume$/),
+    turnover:     findKey(/price_volume_turnover_1_day/),
     shareholders: findKey(/number_of_shareholders/),
     piotroski:    findKey(/piotroski/),
     high_1d:      findKey(/^high_1_day$/),
@@ -1302,13 +1304,15 @@ function runEngine(raw, sessionTag){
   //   have valid features and are precious learning signal (a UC rocket is a perfect rocket).
   // filtered (display set): additionally exclude UC, non-EQ series, and surveillance.
   const _liqMinVol=parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT;
+  const _liqMinTurnover=parseFloat(document.getElementById('fMinTurnover')?.value)||0;
   REMOVED={uc:0,surv:0,survRules:{},liq:0,
     rockets:{uc:[],surv:[],liq:[]}};
   const _dataQualityFail=(d)=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
     const vol=K.volume?d[K.volume]:null;
-    if(vol!==null&&vol<_liqMinVol){
+    const tv=K.turnover?d[K.turnover]:null;
+    if((vol!==null&&vol<_liqMinVol)||(tv!==null&&_liqMinTurnover>0&&tv<_liqMinTurnover)){
       REMOVED.liq++;
       if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
       return true;
@@ -1405,6 +1409,22 @@ function runEngine(raw, sessionTag){
   // Remove: yesterday's bad rockets should NOT be in the positive set
   // (they can't be — if they collapsed today they're <10%, so not in topSetToday)
   const topN=topSetToday.size;
+
+  // ── Auto-set Min Turnover to lowest rocket turnover (if field is blank) ──
+  // Today's rockets define the minimum tradeable liquidity floor — any stock
+  // with lower turnover than the least-liquid rocket has never been a rocket.
+  if(K.turnover && topSetToday.size > 0){
+    const rocketTurnovers=[...topSetToday]
+      .map(i=>learningSet[i][K.turnover])
+      .filter(v=>v!=null&&v>0);
+    if(rocketTurnovers.length > 0){
+      const minRocketTV=Math.min(...rocketTurnovers);
+      const tvEl=document.getElementById('fMinTurnover');
+      if(tvEl && !tvEl.value){
+        tvEl.value=Math.round(minRocketTV);
+      }
+    }
+  }
   const goodFromYesterday=goodRocketsToday.size;
   const badFromYesterday=yesterdayRockets.filter(r=>!r.held).length;
   const qualityN=qualitySet.size;
@@ -2917,7 +2937,7 @@ function renderMethodology(){
       <div class="m-card"><h4>🚀 What is a Rocket?</h4><p>Every trading day, regardless of what the broader market is doing, a small subset of NSE stocks moves <strong>≥${E.rocketThreshold||10}% intraday</strong>. These are Rockets. They don't happen randomly — stocks that become rockets tend to share measurable characteristics <em>the day before</em> they move. The engine's job is to find those stocks before the move, not explain them after.</p></div>
       <div class="m-card"><h4>📡 How the Engine Learns</h4><p>After each session, the engine correlates <strong>yesterday's feature values</strong> against <strong>today's actual rockets</strong>. Features that consistently appeared in rockets get higher weight; features that didn't get lower weight. Tomorrow's recommendations are stocks that look like yesterday's rockets — but haven't moved yet. The target label is quality-adjusted: yesterday's rockets that <em>held</em> today reinforce the signal; those that collapsed are treated as 0, so the engine learns to find durable moves, not fragile spikes.</p></div>
       <div class="m-card"><h4>🎯 Buy Zone — Runway to Target</h4><p>A recommended stock must still have <strong>runway to reach the target</strong> — it shouldn't be overextended at entry. A stock is in the buy zone when its current 1D gain plus the adaptive target stays below the rocket threshold: <em>1D% + TGT% &lt; ${(E.rocketThreshold||10)}%</em>. A stock already up ${((E.rocketThreshold||10)-(getEffectiveTgtPct()||3.7)).toFixed(1)}%+ has no room left to hit target without becoming a rocket itself — those are excluded.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), non-EQ series (BE/BZ/SZ etc.), low volume (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()} at open). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), non-EQ series (BE/BZ/SZ etc.), low liquidity (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()}${parseFloat(document.getElementById('fMinTurnover')?.value)>0?' or turnover &lt;₹'+(parseFloat(document.getElementById('fMinTurnover')?.value)/1e5).toFixed(1)+'L':''} at open). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Market Regime</h4><p>Today's market: <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% stocks advancing). Bull ≥55%, Bear &lt;35%. Regime is shown for context only — the learning accumulator is regime-agnostic, so the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s full universe and fed into mRMR as features. Stocks outperforming their sector score higher regardless of market direction.</p></div>
     </div>
@@ -3459,7 +3479,7 @@ function renderStatusBar(){
 }
 
 function clearFilters(){
-  ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax','fMinTurnover'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='77';
@@ -4437,6 +4457,7 @@ function saveFilterState(){
     priceMax:document.getElementById('fPriceMax')?.value||'',
     fvol:VOL_AUTO?'':document.getElementById('fVol')?.value||'',
     volMult:document.getElementById('fVolMult')?.value||String(LIQ_MIN_VOL_DEFAULT),
+    minTurnover:document.getElementById('fMinTurnover')?.value||'',
     fMin1D:document.getElementById('fMin1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
@@ -4460,6 +4481,7 @@ function loadFilterState(){
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
     if(state.topupAlloc!=null){const el=document.getElementById('fTopupAlloc');if(el)el.value=state.topupAlloc;}
     if(state.volMult){const el=document.getElementById('fVolMult');if(el)el.value=state.volMult;}
+    if(state.minTurnover){const el=document.getElementById('fMinTurnover');if(el)el.value=state.minTurnover;}
     if(state.fvol){
       const el=document.getElementById('fVol');if(el)el.value=state.fvol;
       VOL_AUTO=false;
@@ -4561,6 +4583,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
