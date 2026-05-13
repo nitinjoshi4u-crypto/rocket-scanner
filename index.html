@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:50 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 12:18 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -629,6 +629,7 @@ async function pickDataFolder(){
   }catch(e){console.warn('Key migration:',e);}
 })();
 let NSE_BHAV={},NSE_52W={},NSE_SURV={},NSE_BULK={},NSE_BLOCK={};
+let NSE_NON_EQ=new Set(); // symbols in non-EQ series (BE,BZ,SZ,SM,ST) — excluded from display, kept in learning
 let NSE_HOLIDAYS=new Set(); // Set of 'YYYY-MM-DD' strings for NSE trading holidays
 let SURV_CUSTOM_RULES=[]; // [{key,column,label}] all surveillance rules — user-managed, persisted in brain
 let SURV_FILE_RULES=[]; // [{key,column,label,manual:false}] — populated from actual REG1 file in parseSurv; replaces SURV_DEFAULT_RULES
@@ -1028,6 +1029,7 @@ function parse52W(text){
 function parseSurv(text){
   const rows=parseCSV(text);
   NSE_SURV={};
+  NSE_NON_EQ=new Set();
   SURV_HEADERS=[];
   SURV_RULE_HITS={};
   SURV_MISSING_RULES=new Set();
@@ -1039,6 +1041,7 @@ function parseSurv(text){
   hdrs.forEach(h=>{hdrMap[String(h).trim().toLowerCase()]=h;});
   // Find symbol column — REG1 files use various casings/names
   const symCol=findHeader(hdrs,[/^symbol$/i,/^nse.?symbol$/i,/^trading.?symbol$/i,/^scrip.?symbol$/i])||null;
+  const seriesCol=findHeader(hdrs,[/^series$/i])||null;
   // dataHdrs: every column from the actual REG1 file that is a surveillance flag
   // Excludes identity/metadata columns and filler columns — no hardcoded rule list needed
   const _survNonFlag=new Set(['scripcode','symbol','nse exclusive','status','series']);
@@ -1058,6 +1061,8 @@ function parseSurv(text){
   activeRules.forEach(rule=>{SURV_RULE_HITS[rule.key]=0;});
   rows.forEach(r=>{
     const sym=normSym(symCol?r[symCol]:r['Symbol']);if(!sym)return;
+    // Track non-EQ series — BE/BZ/SZ/SM/ST can't be bought normally
+    if(seriesCol){const s=(r[seriesCol]||'').trim().toUpperCase();if(s&&s!=='EQ')NSE_NON_EQ.add(sym);}
     const hits=[];
     activeRules.forEach(rule=>{
       if(!rule.header) return;
@@ -1359,6 +1364,7 @@ function runEngine(raw, sessionTag){
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
     if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
+    if(NSE_NON_EQ.has(d.symbol)){REMOVED.surv++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.surv.push({sym,pc});return false;}
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
       const primaryRule=NSE_SURV[d.symbol][0];
@@ -4669,6 +4675,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
