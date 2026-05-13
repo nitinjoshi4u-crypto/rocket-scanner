@@ -56,7 +56,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .st-l{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--t3);font-weight:600}
 .st-v{font-size:24px;font-weight:800;margin-top:4px;font-family:'DM Mono',monospace}
 .st-d{font-size:11px;color:var(--t2);margin-top:3px}
-.info-bar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.info-bar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .info-pill{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace}
 .pill-green{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
 .pill-orange{background:rgba(245,158,11,.1);color:var(--orange);border:1px solid rgba(245,158,11,.2)}
@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:24 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:25 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1930,9 +1930,7 @@ function renderStats(){
   // Update surveillance P&L correlation accumulator if both data sources are ready
   if(HOLDINGS?.length&&Object.keys(SURV_ALL_HITS).length) try{updateSurvCorrelation();}catch(e){}
   const infoBarEl=document.getElementById('infoBar');
-  infoBarEl.innerHTML=
-    `<div style="display:flex;gap:6px;flex-wrap:wrap">${filterPills.join('')}</div>`+
-    (infoPills.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${infoPills.join('')}</div>`:'');
+  infoBarEl.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap">${[...filterPills,...infoPills].join('')}</div>`;
   void infoBarEl.offsetHeight;
 }
 
@@ -4683,6 +4681,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
