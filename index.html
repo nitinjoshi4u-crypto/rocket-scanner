@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 14:46 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 15:55 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1403,11 +1403,10 @@ function runEngine(raw, sessionTag){
   // Sort: biggest yesterday movers first
   yesterdayRockets.sort((a,b)=>b.yesterdayChg-a.yesterdayChg);
 
-  // Build quality-adjusted target set:
-  // Union of today's new rockets + yesterday's verified good rockets
-  const qualitySet=new Set([...topSetToday,...goodRocketsToday]);
-  // Remove: yesterday's bad rockets should NOT be in the positive set
-  // (they can't be — if they collapsed today they're <10%, so not in topSetToday)
+  // Learning target = only TODAY's fresh rockets.
+  // Yesterday's held rockets are NOT added to labelMap — a stock that already ran is at the
+  // end of its move, not the beginning. goodRocketsToday is kept for display only (methodology panel).
+  const qualitySet=new Set([...topSetToday]);
   const topN=topSetToday.size;
 
   // ── Auto-set Min Turnover to lowest rocket turnover ──
@@ -1433,12 +1432,12 @@ function runEngine(raw, sessionTag){
   let laggedNote='';
 
   if(qualityN===0){
-    laggedNote='No rockets today (0 stocks ≥'+ROCKET_THRESHOLD+'%), 0 verified from yesterday — using historical only';
+    laggedNote='No rockets today — skipping learning update, using historical only';
     for(const f of FEATS) targetCorrToday[f]=null;
   } else if(useLagged){
     const overlapIndices=overlap.map(d=>learningSet.indexOf(d));
     const laggedTarget=overlapIndices.map(i=>labelMap.get(i)||0);
-    laggedNote='Lagged ('+overlap.length+' matched · '+topN+' new rockets · +'+goodFromYesterday+' verified · −'+badFromYesterday+' collapsed · '+qualityN+' quality target)';
+    laggedNote='Lagged ('+overlap.length+' matched · '+topN+' new rockets · +'+goodFromYesterday+' held display · −'+badFromYesterday+' collapsed · '+topN+' learning target)';
     for(const f of FEATS){
       const prevVals=overlap.map(d=>{
         const v=prevSnap[d.symbol][f];
@@ -1447,13 +1446,12 @@ function runEngine(raw, sessionTag){
       targetCorrToday[f]=pearson(laggedTarget,prevVals);
     }
   } else {
-    const target=learningSet.map((_,i)=>labelMap.get(i)||0);
+    // No valid lagged snapshot — same-day correlation is poisoned (features already reflect
+    // a stock mid-rocket, not pre-rocket). Skip the learning update entirely.
     laggedNote=overlap.length>0
-      ?'Same-day fallback (only '+overlap.length+' matched, need 100+)'
-      :'Session 1 — lagged learning starts next upload';
-    for(const f of FEATS){
-      targetCorrToday[f]=pearson(target,learningSet.map(d=>d[f]));
-    }
+      ?'Skipped — only '+overlap.length+' lagged matches (need 100+), not enough for clean signal'
+      :'Session 1 — upload tomorrow\'s CSV to begin lagged learning';
+    for(const f of FEATS) targetCorrToday[f]=null;
   }
 
   // ── Single accumulator EMA blend (regime-agnostic) ──
@@ -4584,6 +4582,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
