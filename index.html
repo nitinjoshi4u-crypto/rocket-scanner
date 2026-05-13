@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:20 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:24 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1884,7 +1884,7 @@ function renderStats(){
 
   // Row 1: hard-filter removal pills
   const filterPills=[];
-  const _ucRkt=REMOVED.rockets?.uc||[];filterPills.push(`<span class="info-pill pill-red" ${_ucRkt.length?`title="Rockets in UC: ${_ucRkt.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', ')}"`:''}>⛔ ${REMOVED.uc} upper circuit removed${_ucRkt.length?` 🚀${_ucRkt.length}`:''}</span>`);
+  const _ucRkt=REMOVED.rockets?.uc||[];if(_ucRkt.length)filterPills.push(`<span class="info-pill pill-red" title="UC rockets (learned from, not shown): ${_ucRkt.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', ')}">⛔ ${_ucRkt.length} UC rockets</span>`);
   if(REMOVED.surv>0){const _sre=Object.entries(REMOVED.survRules||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const _srm=Object.fromEntries(getSurvRules().map(r=>[r.key,r.label]));const _srtip=_sre.map(([k,v])=>`${_srm[k]||k}: ${v}`).join(' · ');filterPills.push(`<span class="info-pill pill-orange" title="${escHtml(_srtip)}">⚠ ${REMOVED.surv} surveillance removed</span>`);}
   if(REMOVED.liq>0)filterPills.push(`<span class="info-pill pill-blue">🚫 ${REMOVED.liq} low liquidity removed</span>`);
   if(REMOVED.fscore>0)filterPills.push(`<span class="info-pill pill-gray">🚫 ${REMOVED.fscore} F-Score removed</span>`);
@@ -4683,6 +4683,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
