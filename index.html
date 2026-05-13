@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:32 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:35 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -967,7 +967,7 @@ function getHardFilterRowsFromEngine(E){
     })),
     {key:'low_liquidity',label:'Low Liquidity',criteria:`Shareholders < ${CORE_FILTERS.liq.minSh.toLocaleString()} OR Volume < ${CORE_FILTERS.liq.minVol.toLocaleString()}`,removed:rm.liq||0,rockets:rk.liq||[],active:true,kind:'core'},
     {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,rockets:rk.fscore||[],active:true,kind:'core'},
-    {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% or null',removed:rm.deliv||0,rockets:rk.deliv||[],active:true,kind:'core'},
+    {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% (null = pass)',removed:rm.deliv||0,rockets:rk.deliv||[],active:true,kind:'core'},
   ];
 }
 function persistMethodologySnapshot(){
@@ -4681,6 +4681,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
