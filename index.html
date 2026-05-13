@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 12:40 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 12:45 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2608,12 +2608,9 @@ function buildHardFilterMethodologyHTML(E){
       ? `<div style="font-size:11px;color:var(--amber);margin-top:8px">Showing last saved run (${survSize} flagged). Load NSE ZIP this session to refresh.</div>`
       : `<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:11px;color:var(--red)">NSE REG1 data not active — surveillance rows shown for configuration only, won't filter until a REG1 file is loaded.</div>`);
 
+  const totalRemoved=(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0);
   return `
     <h3 id="meth-filters" style="margin-top:28px">Hard Filters <span style="font-size:12px;color:var(--t3);font-weight:400">(${totalRemoved} removals in latest saved run)</span></h3>
-
-    <h4 style="margin:14px 0 8px;font-size:12px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Core Filters</h4>
-    <p style="color:var(--t3);font-size:11px;margin-bottom:10px">Toggle on/off and adjust thresholds. Changes apply on the next TV CSV upload.</p>
-    ${coreHTML}
 
     <h4 style="margin:20px 0 8px;font-size:12px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Surveillance Filters (NSE REG1)</h4>
     <p style="color:var(--t3);font-size:11px;margin-bottom:10px">Each row is an exact REG1 column. Any stock flagged under that column is removed from scanning.</p>
@@ -4575,6 +4572,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
