@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:35 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:50 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -769,7 +769,6 @@ let VOL_AUTO=true;
 const FILTER_BUY_ZONE=true; // always on — only stocks with price ≤ VWAP+0.5×ATR shown
 // Core hard-filter thresholds — user-configurable, stored in rs_core_filters localStorage
 let CORE_FILTERS={
-  uc:{enabled:true,threshold:19.5},          // upper circuit %
   liq:{enabled:true,minSh:10000,minVol:5000}, // liquidity floor
   fscore:{enabled:true,maxScore:3},           // Piotroski ≤ this value filtered out
   deliv:{enabled:true,minDeliv:30},           // delivery % minimum
@@ -952,7 +951,6 @@ function getHardFilterRowsFromEngine(E){
   const rk=rm.rockets||{};
   const survRows=syncSurvRuleRows(E.survRuleRows||[]);
   return [
-    {key:'upper_circuit',label:'Upper Circuit',criteria:'Price change >= 19.5%',removed:rm.uc||0,rockets:rk.uc||[],active:true,kind:'core'},
     ...survRows.map(row=>({
       key:'surv_'+row.key,
       label:row.label,
@@ -1360,7 +1358,7 @@ function runEngine(raw, sessionTag){
   const filtered=learningSet.filter(d=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
-    if(CORE_FILTERS.uc.enabled&&pc!==null&&pc>=CORE_FILTERS.uc.threshold){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
+    if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
       const primaryRule=NSE_SURV[d.symbol][0];
@@ -2563,8 +2561,6 @@ function renderPerformance(){
 function _saveCoreFilterField(id, val){
   // Map field id → CORE_FILTERS key
   const map={
-    'cf_uc':['uc','enabled'],
-    'cf_uc_thr':['uc','threshold'],
     'cf_liq':['liq','enabled'],
     'cf_liq_sh':['liq','minSh'],
     'cf_liq_vol':['liq','minVol'],
@@ -2627,14 +2623,6 @@ function buildHardFilterMethodologyHTML(E){
 
   const coreHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-bottom:16px">
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-        ${tog('uc','Upper Circuit',rmBadge(coreRow.upper_circuit||{})+rktBadge(coreRow.upper_circuit||{}))}
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-left:20px">
-          <span style="font-size:11px;color:var(--t3)">Price chg ≥</span>
-          ${iEl('cf_uc_thr',CORE_FILTERS.uc.threshold,'60px')}
-          <span style="font-size:11px;color:var(--t3)">%</span>
-        </div>
-      </div>
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
         ${tog('liq','Liquidity Floor',rmBadge(coreRow.low_liquidity||{})+rktBadge(coreRow.low_liquidity||{}))}
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;padding-left:20px">
@@ -4681,6 +4669,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
