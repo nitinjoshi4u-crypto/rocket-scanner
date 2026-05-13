@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 12:56 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 12:57 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1615,9 +1615,9 @@ function runEngine(raw, sessionTag){
     }))
   };
   COLS=getCols(); // refresh dynamic columns
-  // Persist lightweight methodology data (everything except N² interCorr matrix)
+  // Persist methodology data including interCorr matrix
   try{
-    const methSave={targetCorr,targetCorrToday,mrmr,weights,features:FEATS,labels:LABELS,top10Feats,rocketCount:ENGINE_DATA.rocketCount,rocketThreshold:ENGINE_DATA.rocketThreshold,accSessions:ENGINE_DATA.accSessions,laggedNote:ENGINE_DATA.laggedNote,
+    const methSave={targetCorr,targetCorrToday,interCorr,mrmr,weights,features:FEATS,labels:LABELS,top10Feats,rocketCount:ENGINE_DATA.rocketCount,rocketThreshold:ENGINE_DATA.rocketThreshold,accSessions:ENGINE_DATA.accSessions,laggedNote:ENGINE_DATA.laggedNote,
       regime:ENGINE_DATA.regime,marketBreadth:ENGINE_DATA.marketBreadth,useAccCorr:ENGINE_DATA.useAccCorr,sectorCol:ENGINE_DATA.sectorCol,industryCol:ENGINE_DATA.industryCol,
       yesterdayRockets:yesterdayRockets,goodFromYesterday:goodFromYesterday,badFromYesterday:badFromYesterday,qualityTargetN:qualityN,totalParsed:totalParsed,removed:{...REMOVED},survSize:Object.keys(NSE_SURV).length};
     FS.set(METH_STORE,methSave);
@@ -4269,11 +4269,11 @@ async function initApp(){
     try{
       const meth=brain[METH_STORE];
       if(meth&&meth.features&&meth.features.length){
-        ENGINE_DATA={...meth,interCorr:{}};
+        ENGINE_DATA={...meth,interCorr:meth.interCorr||{}};
         COLS=getCols();
         // Restore REMOVED counts so filter pills show correctly on page load
         if(meth.removed&&typeof meth.removed==='object'){
-          REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,...meth.removed};
+          REMOVED={uc:0,surv:0,survRules:{},liq:0,...meth.removed};
           if(typeof REMOVED.survRules!=='object'||Array.isArray(REMOVED.survRules)) REMOVED.survRules={};
         }
         console.log('INIT: restored methodology data,',meth.features.length,'features');
@@ -4523,6 +4523,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
