@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:12 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:20 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1318,14 +1318,49 @@ function runEngine(raw, sessionTag){
   let rocketPct=ENGINE_DATA?.rocketThreshold||10, holdFactor=0.3;
 
   // ── Hard Filters ──
+  // Two passes:
+  // learningSet: exclude only data-quality filters (liq, fscore, deliv) — UC and surv stocks
+  //   have valid features and are precious learning signal (a UC rocket is a perfect rocket).
+  // filtered (display set): additionally exclude UC and surveillance — can't be bought/recommended.
   REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,
     rockets:{uc:[],surv:[],liq:[],fscore:[],deliv:[]}};
-  const filtered=parsed.filter(d=>{
+  const _dataQualityFail=(d)=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
-    // Upper circuit — stock can't be bought, invalid for scanning
+    if(CORE_FILTERS.liq.enabled){
+      const sh=K.shareholders?d[K.shareholders]:null;
+      const vol=K.volume?d[K.volume]:null;
+      if((sh!==null&&sh<CORE_FILTERS.liq.minSh)||(vol!==null&&vol<CORE_FILTERS.liq.minVol)){
+        REMOVED.liq++;
+        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
+        return true;
+      }
+    }
+    if(CORE_FILTERS.fscore.enabled){
+      const pio=K.piotroski?d[K.piotroski]:null;
+      if(pio===null||pio<=CORE_FILTERS.fscore.maxScore){
+        REMOVED.fscore++;
+        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fscore.push({sym,pc});
+        return true;
+      }
+    }
+    if(CORE_FILTERS.deliv.enabled){
+      const del=d.delivery_pct;
+      if(del===null||del<CORE_FILTERS.deliv.minDeliv){
+        REMOVED.deliv++;
+        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
+        return true;
+      }
+    }
+    return false;
+  };
+  // learningSet: all stocks with valid data quality (UC and surv included — their features are real)
+  const learningSet=parsed.filter(d=>!_dataQualityFail(d));
+  // filtered (display): additionally remove UC and surveillance
+  const filtered=learningSet.filter(d=>{
+    const pc=K.price_change?d[K.price_change]:null;
+    const sym=d.symbol;
     if(CORE_FILTERS.uc.enabled&&pc!==null&&pc>=CORE_FILTERS.uc.threshold){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
-    // Surveillance — regulatory exclusion
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
       const primaryRule=NSE_SURV[d.symbol][0];
@@ -1333,40 +1368,14 @@ function runEngine(raw, sessionTag){
       if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
       return false;
     }
-    // Hard liquidity floor
-    if(CORE_FILTERS.liq.enabled){
-      const sh=K.shareholders?d[K.shareholders]:null;
-      const vol=K.volume?d[K.volume]:null;
-      if((sh!==null&&sh<CORE_FILTERS.liq.minSh)||(vol!==null&&vol<CORE_FILTERS.liq.minVol)){
-        REMOVED.liq++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
-        return false;
-      }
-    }
-    // Piotroski
-    if(CORE_FILTERS.fscore.enabled){
-      const pio=K.piotroski?d[K.piotroski]:null;
-      if(pio===null||pio<=CORE_FILTERS.fscore.maxScore){
-        REMOVED.fscore++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fscore.push({sym,pc});
-        return false;
-      }
-    }
-    // Delivery %
-    if(CORE_FILTERS.deliv.enabled){
-      const del=d.delivery_pct;
-      if(del===null||del<CORE_FILTERS.deliv.minDeliv){
-        REMOVED.deliv++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
-        return false;
-      }
-    }
     return true;
   });
 
-  // Expose for snapshot saving after engine run
+  // Expose for snapshot saving after engine run.
+  // Use learningSet (not filtered) so UC/surv stocks are snapshotted — if they rocket
+  // tomorrow, we can correlate against their features from today.
   window._lastEngineFeats = FEATS;
-  window._lastParsedFiltered = filtered;
+  window._lastParsedFiltered = learningSet;
 
   // Deduplicate FEATS (in case of re-runs in same session)
   const FEATS_UNIQUE=[...new Set(FEATS)];
@@ -1383,8 +1392,8 @@ function runEngine(raw, sessionTag){
   const ROCKET_THRESHOLD=10;
   rocketPct=ROCKET_THRESHOLD;
   const topSetToday=new Set();
-  const labelMap=new Map(); // filtered index → soft rocket label: (change%-threshold)/threshold
-  filtered.forEach((d,i)=>{
+  const labelMap=new Map(); // learningSet index → soft rocket label: (change%-threshold)/threshold
+  learningSet.forEach((d,i)=>{
     const pc=K.price_change?d[K.price_change]:null;
     if(pc!=null&&pc>=ROCKET_THRESHOLD){
       topSetToday.add(i);
@@ -1398,16 +1407,16 @@ function runEngine(raw, sessionTag){
   const prevSnap=PREV_SNAP||{};
   const pcKey=K.price_change; // safe key for price change in PREV_SNAP
   const yesterdayRockets=[]; // for data panel
-  const goodRocketsToday=new Set(); // indices into filtered[]
-  const filteredSymMap={}; filtered.forEach((d,i)=>{filteredSymMap[d.symbol]=i;});
+  const goodRocketsToday=new Set(); // indices into learningSet[]
+  const learningSymMap={}; learningSet.forEach((d,i)=>{learningSymMap[d.symbol]=i;});
 
   if(pcKey){
     Object.entries(prevSnap).forEach(([sym,feats])=>{
       const yesterdayChg=feats[pcKey];
       if(yesterdayChg==null||yesterdayChg<ROCKET_THRESHOLD) return;
       // This stock was a rocket yesterday — how is it doing today?
-      const idx=filteredSymMap[sym];
-      const todayData=idx!=null?filtered[idx]:null;
+      const idx=learningSymMap[sym];
+      const todayData=idx!=null?learningSet[idx]:null;
       const todayChg=todayData&&pcKey?todayData[pcKey]:null;
       const collapseThreshold=-(yesterdayChg*holdFactor);
       const held=todayChg!=null&&todayChg>collapseThreshold;
@@ -1439,7 +1448,8 @@ function runEngine(raw, sessionTag){
   const qualityN=qualitySet.size;
 
   // ── Lagged correlation: YESTERDAY's features → quality-adjusted target ──
-  const overlap=filtered.filter(d=>prevSnap[d.symbol]&&Object.keys(prevSnap[d.symbol]).length>0);
+  // Uses learningSet (includes UC + surv) so rockets in those categories contribute to learning.
+  const overlap=learningSet.filter(d=>prevSnap[d.symbol]&&Object.keys(prevSnap[d.symbol]).length>0);
   const useLagged=overlap.length>=100;
 
   const targetCorrToday={};
@@ -1449,7 +1459,7 @@ function runEngine(raw, sessionTag){
     laggedNote='No rockets today (0 stocks ≥'+ROCKET_THRESHOLD+'%), 0 verified from yesterday — using historical only';
     for(const f of FEATS) targetCorrToday[f]=null;
   } else if(useLagged){
-    const overlapIndices=overlap.map(d=>filtered.indexOf(d));
+    const overlapIndices=overlap.map(d=>learningSet.indexOf(d));
     const laggedTarget=overlapIndices.map(i=>labelMap.get(i)||0);
     laggedNote='Lagged ('+overlap.length+' matched · '+topN+' new rockets · +'+goodFromYesterday+' verified · −'+badFromYesterday+' collapsed · '+qualityN+' quality target)';
     for(const f of FEATS){
@@ -1460,12 +1470,12 @@ function runEngine(raw, sessionTag){
       targetCorrToday[f]=pearson(laggedTarget,prevVals);
     }
   } else {
-    const target=filtered.map((_,i)=>labelMap.get(i)||0);
+    const target=learningSet.map((_,i)=>labelMap.get(i)||0);
     laggedNote=overlap.length>0
       ?'Same-day fallback (only '+overlap.length+' matched, need 100+)'
       :'Session 1 — lagged learning starts next upload';
     for(const f of FEATS){
-      targetCorrToday[f]=pearson(target,filtered.map(d=>d[f]));
+      targetCorrToday[f]=pearson(target,learningSet.map(d=>d[f]));
     }
   }
 
@@ -4673,6 +4683,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
