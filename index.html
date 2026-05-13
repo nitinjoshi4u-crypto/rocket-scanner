@@ -332,7 +332,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 10:25 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 10:32 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1338,7 +1338,7 @@ function runEngine(raw, sessionTag){
     }
     if(CORE_FILTERS.fscore.enabled){
       const pio=K.piotroski?d[K.piotroski]:null;
-      if(pio===null||pio<=CORE_FILTERS.fscore.maxScore){
+      if(pio!==null&&pio<=CORE_FILTERS.fscore.maxScore){
         REMOVED.fscore++;
         if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fscore.push({sym,pc});
         return true;
@@ -1346,7 +1346,7 @@ function runEngine(raw, sessionTag){
     }
     if(CORE_FILTERS.deliv.enabled){
       const del=d.delivery_pct;
-      if(del===null||del<CORE_FILTERS.deliv.minDeliv){
+      if(del!==null&&del<CORE_FILTERS.deliv.minDeliv){
         REMOVED.deliv++;
         if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
         return true;
@@ -4681,6 +4681,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
