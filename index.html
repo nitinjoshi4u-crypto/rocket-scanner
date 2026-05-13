@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 13:12 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 13:46 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1453,7 +1453,41 @@ function runEngine(raw, sessionTag){
   const useAccCorr = accSessions >= 2;
   // EMA: α ramps from 1.0 (session 1) down to 0.1 (steady state, half-life ~7 sessions)
   const EMA_ALPHA = accSessions < 2 ? 1 : Math.max(0.1, 1 / accSessions);
-  const blendAlpha = isNewDay ? EMA_ALPHA : (accSessions > 0 ? 1/accSessions : 1);
+
+  // ── P&L feedback: scale α by how well trades bought on the previous session performed ──
+  // For each buy date in tradebook, compute mean(netPnl / max(holdDays,1)) — P&L per day held.
+  // This rewards fast profitable trades more than slow ones (your stated preference).
+  // Normalize across all buy dates: pnlFactor = sigmoid-like mapping centered at 1.0.
+  // Sessions where your trades made good P&L-per-day → learn more from that session's features.
+  // Sessions where trades lost → learn less (α suppressed, but never below 0.3× base).
+  let pnlFactor = 1.0; // default: no adjustment when tradebook not loaded
+  if(isNewDay && TRADEBOOK_STATS?.tripsData?.length && ACC_CORR?.lastDate){
+    const trips = TRADEBOOK_STATS.tripsData;
+    // Build buyDate → mean P&L-per-day across all dates
+    const bdMap = {};
+    trips.forEach(r => {
+      if(!r.buyDate || r.netPnl == null) return;
+      const ppd = r.netPnl / Math.max(r.holdDays || 0, 1);
+      if(!bdMap[r.buyDate]) bdMap[r.buyDate] = [];
+      bdMap[r.buyDate].push(ppd);
+    });
+    const bdVals = Object.values(bdMap).map(arr => arr.reduce((s,v)=>s+v,0)/arr.length);
+    if(bdVals.length >= 3) { // need enough history to normalize
+      const bdMean = bdVals.reduce((s,v)=>s+v,0) / bdVals.length;
+      const bdSd = Math.sqrt(bdVals.reduce((s,v)=>s+(v-bdMean)**2,0)/bdVals.length) || 1;
+      // Look up previous session date (ACC_CORR.lastDate = the date we're now blending in)
+      const prevDatePpd = bdMap[ACC_CORR.lastDate]
+        ? bdMap[ACC_CORR.lastDate].reduce((s,v)=>s+v,0)/bdMap[ACC_CORR.lastDate].length
+        : null;
+      if(prevDatePpd != null) {
+        // z-score of that session's P&L-per-day, mapped to [0.3, 1.7] range
+        const z = (prevDatePpd - bdMean) / bdSd;
+        pnlFactor = Math.min(1.7, Math.max(0.3, 1.0 + 0.35 * Math.tanh(z)));
+      }
+    }
+  }
+
+  const blendAlpha = isNewDay ? EMA_ALPHA * pnlFactor : (accSessions > 0 ? 1/accSessions : 1);
 
   const learningCorr={};
   for(const f of FEATS){
@@ -1468,7 +1502,8 @@ function runEngine(raw, sessionTag){
   // Save single accumulator
   ACC_CORR={corr:{},sessions:accSessions+(isNewDay?1:0),
             lastDate:_today,lastUpdated:new Date().toISOString(),
-            laggedNote:laggedNote,regime:regime};
+            laggedNote:laggedNote,regime:regime,
+            lastPnlFactor:isNewDay?pnlFactor:((ACC_CORR?.lastPnlFactor)??1.0)};
   for(const f of FEATS) ACC_CORR.corr[f]=learningCorr[f];
   FS.set(CORR_STORE,ACC_CORR);
 
@@ -2779,7 +2814,7 @@ function renderMethodology(){
     <div class="regime-badge" style="color:${regimeColor}">${regimeIcon} ${(E.regime||'neutral').toUpperCase()}</div>
     <div class="regime-meta">
       <div style="color:var(--t1);font-weight:600">${corrSource}</div>
-      <div>Breadth: ${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0)+'%':'?'} · ${sessLabel}${E.rocketCount!=null?' · 🚀 '+E.rocketCount+' rockets (≥'+(E.rocketThreshold||10)+'%)':''}</div>
+      <div>Breadth: ${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0)+'%':'?'} · ${sessLabel}${E.rocketCount!=null?' · 🚀 '+E.rocketCount+' rockets (≥'+(E.rocketThreshold||10)+'%)':''}${ACC_CORR?.lastPnlFactor!=null&&ACC_CORR.lastPnlFactor!==1.0?' · P&L weight: <span style="color:'+(ACC_CORR.lastPnlFactor>=1?'var(--green)':'var(--orange)')+'">'+ACC_CORR.lastPnlFactor.toFixed(2)+'×</span>':''}</div>
     </div>
     <div class="regime-sessions">
       <span>${E.accSessions||0} sessions</span>
@@ -4532,6 +4567,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
