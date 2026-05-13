@@ -309,7 +309,8 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
    <div class="fg"><span class="fg-lbl">Min 1D %</span><input type="number" id="fMin1D" placeholder="e.g. 2" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
-   <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this. Tracks Min Volume from hard filters."></div>
+   <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this = Min Vol floor"></div>
+   <div class="fg"><span class="fg-lbl" style="font-size:8px">Min Sh</span><input type="number" id="fMinSh" placeholder="10000" min="0" step="1000" style="width:72px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min shareholders (distinct owners). Stocks with fewer shareholders than this are excluded from rankings and learning."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Capital ₹</span><input type="number" id="fCapital" placeholder="e.g. 100000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
@@ -332,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 12:18 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-13 12:40 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -342,7 +343,7 @@ let PERF_PERIOD_FILTER='all'; // 'all' | '1m' | '3m' | '6m' | '1y'
 let PERF_TRADE_WINDOWS=[]; // cached trade window rows from renderPerformance — used by current-window pill
 let PERF_LATEST_SUMMARY=null; // cached latest session summary from renderPerformance — used by renderStats card
 let ENGINE_DATA={};
-let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0};
+let REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0};
 let SUPPRESSED_HELD=0; // count of stocks hidden because already held in POSITIONS
 let SELECTED=new Set(); // symbols selected for basket — recomputed from FILT each applyFilters
 let PREV_SNAP={}; // symbol→{featureKey:value,...} full feature vector from last upload
@@ -359,7 +360,6 @@ const ORDERS_STORE='rs_orders';
 const POS_STORE='rs_positions';
 const TRADEBOOK_STORE='rs_tradebook';
 const SURV_RULE_STORE='rs_surv_rules';
-const CORE_FILTER_STORE='rs_core_filters';
 const SURV_CORR_STORE='rs_surv_corr';
 const MISSED_OPP_STORE='rs_missed_opp_v2';
 const REC_COUNT_STORE='rs_rec_count';
@@ -758,8 +758,10 @@ function getSessionDate(){
 }
 
 // ── Auto Volume: minutes since day-start × configurable multiplier ──
+const LIQ_MIN_VOL_DEFAULT=5000;
+const LIQ_MIN_SH_DEFAULT=10000;
 function calcAutoVolume(){
-  const mult=parseFloat(document.getElementById('fVolMult')?.value)||CORE_FILTERS.liq.minVol;
+  const mult=parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT;
   const {mins}=istNow();
   const minsFromOpen=mins-DAY_START_MIN;
   if(minsFromOpen<=0) return mult;
@@ -768,12 +770,6 @@ function calcAutoVolume(){
 }
 let VOL_AUTO=true;
 const FILTER_BUY_ZONE=true; // always on — only stocks with price ≤ VWAP+0.5×ATR shown
-// Core hard-filter thresholds — user-configurable, stored in rs_core_filters localStorage
-let CORE_FILTERS={
-  liq:{enabled:true,minSh:10000,minVol:5000}, // liquidity floor
-  fscore:{enabled:true,maxScore:3},           // Piotroski ≤ this value filtered out
-  deliv:{enabled:true,minDeliv:30},           // delivery % minimum
-};
 let _initInProgress=true; // suppresses applyFilters inside setAutoVolume during startup
 function setAutoVolume(){
   if(!VOL_AUTO) return;
@@ -906,22 +902,6 @@ function loadSurvRules(){
     SURV_CUSTOM_RULES=SURV_SEED_RULES.map(r=>({key:survRuleKey(r.column),column:r.column,label:r.label}));
   }
 }
-function saveCoreFilters(){
-  try{localStorage.setItem(CORE_FILTER_STORE,JSON.stringify(CORE_FILTERS));}catch(e){}
-}
-function loadCoreFilters(){
-  try{
-    const raw=JSON.parse(localStorage.getItem(CORE_FILTER_STORE)||'null');
-    if(raw&&typeof raw==='object'){
-      // Merge saved values into defaults (preserves any new keys we add later)
-      ['uc','liq','fscore','deliv'].forEach(k=>{
-        if(raw[k]&&typeof raw[k]==='object') Object.assign(CORE_FILTERS[k],raw[k]);
-      });
-    }
-  }catch(e){}
-  // Sync Vol × multiplier to match the liquidity floor min volume
-  const el=document.getElementById('fVolMult');if(el)el.value=CORE_FILTERS.liq.minVol;
-}
 function syncSurvRuleRows(savedRows){
   const byKey={};
   (savedRows||[]).forEach(row=>{if(row&&row.key) byKey[row.key]=row;});
@@ -964,9 +944,7 @@ function getHardFilterRowsFromEngine(E){
       kind:'surv',
       ruleKey:row.key,
     })),
-    {key:'low_liquidity',label:'Low Liquidity',criteria:`Shareholders < ${CORE_FILTERS.liq.minSh.toLocaleString()} OR Volume < ${CORE_FILTERS.liq.minVol.toLocaleString()}`,removed:rm.liq||0,rockets:rk.liq||[],active:true,kind:'core'},
-    {key:'zero_fscore',label:'Low F-Score',criteria:'Piotroski F-Score ≤ 3',removed:rm.fscore||0,rockets:rk.fscore||[],active:true,kind:'core'},
-    {key:'low_delivery',label:'Low Delivery',criteria:'Delivery % < 30% (null = pass)',removed:rm.deliv||0,rockets:rk.deliv||[],active:true,kind:'core'},
+    {key:'low_liquidity',label:'Low Liquidity',criteria:`Volume < Min Vol OR Shareholders < Min Sh (filter bar)`,removed:rm.liq||0,rockets:rk.liq||[],active:true,kind:'core'},
   ];
 }
 function persistMethodologySnapshot(){
@@ -1322,38 +1300,22 @@ function runEngine(raw, sessionTag){
 
   // ── Hard Filters ──
   // Two passes:
-  // learningSet: exclude only data-quality filters (liq, fscore, deliv) — UC and surv stocks
+  // learningSet: exclude only data-quality filters (liq) — UC and surv stocks
   //   have valid features and are precious learning signal (a UC rocket is a perfect rocket).
-  // filtered (display set): additionally exclude UC and surveillance — can't be bought/recommended.
-  REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,
-    rockets:{uc:[],surv:[],liq:[],fscore:[],deliv:[]}};
+  // filtered (display set): additionally exclude UC, non-EQ series, and surveillance.
+  const _liqMinVol=parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT;
+  const _liqMinSh=parseFloat(document.getElementById('fMinSh')?.value)||0;
+  REMOVED={uc:0,surv:0,survRules:{},liq:0,
+    rockets:{uc:[],surv:[],liq:[]}};
   const _dataQualityFail=(d)=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
-    if(CORE_FILTERS.liq.enabled){
-      const sh=K.shareholders?d[K.shareholders]:null;
-      const vol=K.volume?d[K.volume]:null;
-      if((sh!==null&&sh<CORE_FILTERS.liq.minSh)||(vol!==null&&vol<CORE_FILTERS.liq.minVol)){
-        REMOVED.liq++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
-        return true;
-      }
-    }
-    if(CORE_FILTERS.fscore.enabled){
-      const pio=K.piotroski?d[K.piotroski]:null;
-      if(pio!==null&&pio<=CORE_FILTERS.fscore.maxScore){
-        REMOVED.fscore++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.fscore.push({sym,pc});
-        return true;
-      }
-    }
-    if(CORE_FILTERS.deliv.enabled){
-      const del=d.delivery_pct;
-      if(del!==null&&del<CORE_FILTERS.deliv.minDeliv){
-        REMOVED.deliv++;
-        if(pc!=null&&pc>=rocketPct) REMOVED.rockets.deliv.push({sym,pc});
-        return true;
-      }
+    const sh=K.shareholders?d[K.shareholders]:null;
+    const vol=K.volume?d[K.volume]:null;
+    if((sh!==null&&_liqMinSh>0&&sh<_liqMinSh)||(vol!==null&&vol<_liqMinVol)){
+      REMOVED.liq++;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.liq.push({sym,pc});
+      return true;
     }
     return false;
   };
@@ -1891,8 +1853,6 @@ function renderStats(){
   const _ucRkt=REMOVED.rockets?.uc||[];if(_ucRkt.length)filterPills.push(`<span class="info-pill pill-red" title="UC rockets (learned from, not shown): ${_ucRkt.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', ')}">⛔ ${_ucRkt.length} UC rockets</span>`);
   if(REMOVED.surv>0){const _sre=Object.entries(REMOVED.survRules||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const _srm=Object.fromEntries(getSurvRules().map(r=>[r.key,r.label]));const _srtip=_sre.map(([k,v])=>`${_srm[k]||k}: ${v}`).join(' · ');filterPills.push(`<span class="info-pill pill-orange" title="${escHtml(_srtip)}">⚠ ${REMOVED.surv} surveillance removed</span>`);}
   if(REMOVED.liq>0)filterPills.push(`<span class="info-pill pill-blue">🚫 ${REMOVED.liq} low liquidity removed</span>`);
-  if(REMOVED.fscore>0)filterPills.push(`<span class="info-pill pill-gray">🚫 ${REMOVED.fscore} F-Score removed</span>`);
-  if(REMOVED.deliv>0)filterPills.push(`<span class="info-pill pill-cyan">🚫 ${REMOVED.deliv} low delivery removed</span>`);
   const topUpCt=FILT.filter(s=>s._isTopUp).length;
   if(topUpCt>0)filterPills.push(`<span class="info-pill pill-fire" title="Already in portfolio — shown as top-up candidates.">↑ ${topUpCt} top-up</span>`);
   if(SUPPRESSED_HELD>0)filterPills.push(`<span class="info-pill pill-rose" title="Short positions and zero-qty holdings are always hidden.">📌 ${SUPPRESSED_HELD} held</span>`);
@@ -2564,26 +2524,6 @@ function renderPerformance(){
   setTimeout(()=>{monthTbl.render();symTbl.render();tradeWindowTbl.render();if(timeStopTblObj)timeStopTblObj.render();},0);
 }
 
-function _saveCoreFilterField(id, val){
-  // Map field id → CORE_FILTERS key
-  const map={
-    'cf_liq':['liq','enabled'],
-    'cf_liq_sh':['liq','minSh'],
-    'cf_liq_vol':['liq','minVol'],
-    'cf_fscore':['fscore','enabled'],
-    'cf_fs_max':['fscore','maxScore'],
-    'cf_deliv':['deliv','enabled'],
-    'cf_del_min':['deliv','minDeliv'],
-  };
-  const path=map[id];
-  if(!path) return;
-  const [group,field]=path;
-  if(field==='enabled') CORE_FILTERS[group][field]=!!val;
-  else CORE_FILTERS[group][field]=+parseFloat(val)||0;
-  saveCoreFilters();
-  if(id==='cf_liq_vol'){const el=document.getElementById('fVolMult');if(el)el.value=CORE_FILTERS.liq.minVol;VOL_AUTO=true;setAutoVolume();}
-  showToast('Core filter updated — takes effect on next TV CSV upload.',2500);
-}
 function _refreshHFSection(){
   const wrap=document.getElementById('meth-hf-wrap');
   if(wrap){wrap.innerHTML=buildHardFilterMethodologyHTML(ENGINE_DATA);setTimeout(()=>{_methTbls.hf?.render();_methTbls.sc?.render();},0);}
@@ -2614,45 +2554,8 @@ function removeSurvRule(key){
 }
 function buildHardFilterMethodologyHTML(E){
   const rows=getHardFilterRowsFromEngine(E);
-  const coreRows=rows.filter(r=>r.kind==='core');
   const survRows=rows.filter(r=>r.kind==='surv');
-  const coreRemoved=coreRows.reduce((s,r)=>s+(r.removed||0),0);
   const survRemoved=survRows.reduce((s,r)=>s+(r.active&&r.removed!=null?r.removed:0),0);
-  const totalRemoved=coreRemoved+survRemoved;
-
-  // ── Core Filters UI ──
-  const iEl=(id,val,w='70px')=>`<input type="number" id="${id}" value="${val}" style="width:${w};padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none" onchange="_saveCoreFilterField('${id}',this.value)" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'">`;
-  const tog=(key,label,extra='')=>`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none"><input type="checkbox" id="cf_${key}" ${CORE_FILTERS[key].enabled?'checked':''} onchange="_saveCoreFilterField('cf_${key}',this.checked)" style="accent-color:var(--blue);width:14px;height:14px"><span style="font-size:12px;font-weight:600;color:${CORE_FILTERS[key].enabled?'var(--t1)':'var(--t3)'}">${label}</span>${extra}</label>`;
-  const rmBadge=(r)=>{const v=r.removed||0;return v>0?`<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);margin-left:6px">−${v.toLocaleString()}</span>`:''};
-  const rktBadge=(r)=>{const list=r.rockets||[];return list.length?`<span style="font-size:10px;color:var(--orange);margin-left:4px" title="Rockets filtered: ${list.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', ')}">🚀${list.length}</span>`:''};
-  const coreRow=coreRows.reduce((m,r)=>{m[r.key]=r;return m;},{});
-
-  const coreHTML=`
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-bottom:16px">
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-        ${tog('liq','Liquidity Floor',rmBadge(coreRow.low_liquidity||{})+rktBadge(coreRow.low_liquidity||{}))}
-        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;padding-left:20px">
-          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--t3);width:80px">Min Shareholders</span>${iEl('cf_liq_sh',CORE_FILTERS.liq.minSh,'80px')}</div>
-          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--t3);width:80px">Min Volume</span>${iEl('cf_liq_vol',CORE_FILTERS.liq.minVol,'80px')}</div>
-        </div>
-      </div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-        ${tog('fscore','F-Score',rmBadge(coreRow.zero_fscore||{})+rktBadge(coreRow.zero_fscore||{}))}
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-left:20px">
-          <span style="font-size:11px;color:var(--t3)">Piotroski ≤</span>
-          ${iEl('cf_fs_max',CORE_FILTERS.fscore.maxScore,'60px')}
-          <span style="font-size:11px;color:var(--t3)">filtered out</span>
-        </div>
-      </div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-        ${tog('deliv','Delivery %',rmBadge(coreRow.low_delivery||{})+rktBadge(coreRow.low_delivery||{}))}
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-left:20px">
-          <span style="font-size:11px;color:var(--t3)">Min</span>
-          ${iEl('cf_del_min',CORE_FILTERS.deliv.minDeliv,'60px')}
-          <span style="font-size:11px;color:var(--t3)">%</span>
-        </div>
-      </div>
-    </div>`;
 
   // ── Surveillance Table — only surv rows, all with Remove buttons ──
   const addedRuleKeys=new Set(getSurvRules().map(r=>r.key));
@@ -3023,7 +2926,7 @@ function renderMethodology(){
       <div class="m-card"><h4>🚀 What is a Rocket?</h4><p>Every trading day, regardless of what the broader market is doing, a small subset of NSE stocks moves <strong>≥${E.rocketThreshold||10}% intraday</strong>. These are Rockets. They don't happen randomly — stocks that become rockets tend to share measurable characteristics <em>the day before</em> they move. The engine's job is to find those stocks before the move, not explain them after.</p></div>
       <div class="m-card"><h4>📡 How the Engine Learns</h4><p>After each session, the engine correlates <strong>yesterday's feature values</strong> against <strong>today's actual rockets</strong>. Features that consistently appeared in rockets get higher weight; features that didn't get lower weight. Tomorrow's recommendations are stocks that look like yesterday's rockets — but haven't moved yet. The target label is quality-adjusted: yesterday's rockets that <em>held</em> today reinforce the signal; those that collapsed are treated as 0, so the engine learns to find durable moves, not fragile spikes.</p></div>
       <div class="m-card"><h4>🎯 Buy Zone — Runway to Target</h4><p>A recommended stock must still have <strong>runway to reach the target</strong> — it shouldn't be overextended at entry. A stock is in the buy zone when its current 1D gain plus the adaptive target stays below the rocket threshold: <em>1D% + TGT% &lt; ${(E.rocketThreshold||10)}%</em>. A stock already up ${((E.rocketThreshold||10)-(getEffectiveTgtPct()||3.7)).toFixed(1)}%+ has no room left to hit target without becoming a rocket itself — those are excluded.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), low liquidity (shareholders &lt;${CORE_FILTERS.liq.minSh.toLocaleString()} or volume &lt;${CORE_FILTERS.liq.minVol.toLocaleString()}), Piotroski F-Score ≤${CORE_FILTERS.fscore.maxScore}, delivery &lt;${CORE_FILTERS.deliv.minDeliv}%. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.fscore||0)+(REMOVED.deliv||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), non-EQ series (BE/BZ/SZ etc.), low liquidity (shareholders &lt;${(parseFloat(document.getElementById('fMinSh')?.value)||LIQ_MIN_SH_DEFAULT).toLocaleString()} or volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()} at open). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Market Regime</h4><p>Today's market: <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% stocks advancing). Bull ≥55%, Bear &lt;35%. Regime is shown for context only — the learning accumulator is regime-agnostic, so the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s full universe and fed into mRMR as features. Stocks outperforming their sector score higher regardless of market direction.</p></div>
     </div>
@@ -3568,7 +3471,7 @@ function renderStatusBar(){
 }
 
 function clearFilters(){
-  ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax','fMinSh'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='77';
@@ -4353,8 +4256,6 @@ let ACC_CORR=null; // accumulated targetCorr across sessions
 
 // ── Async app init: load brain file → hydrate all state → render ──
 async function initApp(){
-  // Load core filter settings from localStorage before any engine run
-  loadCoreFilters();
   // Step 0: Connect to folder and load brain file
   const brain=await FS.init();
   if(brain){
@@ -4424,7 +4325,7 @@ async function initApp(){
         COLS=getCols();
         // Restore REMOVED counts so filter pills show correctly on page load
         if(meth.removed&&typeof meth.removed==='object'){
-          REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,deliv:0,...meth.removed};
+          REMOVED={uc:0,surv:0,survRules:{},liq:0,fscore:0,...meth.removed};
           if(typeof REMOVED.survRules!=='object'||Array.isArray(REMOVED.survRules)) REMOVED.survRules={};
         }
         console.log('INIT: restored methodology data,',meth.features.length,'features');
@@ -4485,9 +4386,6 @@ async function initApp(){
         SURV_CUSTOM_RULES=SURV_SEED_RULES.map(r=>({key:survRuleKey(r.column),column:r.column,label:r.label}));
       }
     }catch(e){SURV_CUSTOM_RULES=[];}
-
-    // Step 2g2: Load core filter settings from localStorage
-    loadCoreFilters();
 
     // Step 2h: Restore orders (today only)
     try{
@@ -4550,7 +4448,8 @@ function saveFilterState(){
     priceMin:document.getElementById('fPriceMin')?.value||'',
     priceMax:document.getElementById('fPriceMax')?.value||'',
     fvol:VOL_AUTO?'':document.getElementById('fVol')?.value||'',
-    volMult:document.getElementById('fVolMult')?.value||String(CORE_FILTERS.liq.minVol),
+    volMult:document.getElementById('fVolMult')?.value||String(LIQ_MIN_VOL_DEFAULT),
+    minSh:document.getElementById('fMinSh')?.value||'',
     fMin1D:document.getElementById('fMin1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
@@ -4574,6 +4473,7 @@ function loadFilterState(){
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
     if(state.topupAlloc!=null){const el=document.getElementById('fTopupAlloc');if(el)el.value=state.topupAlloc;}
     if(state.volMult){const el=document.getElementById('fVolMult');if(el)el.value=state.volMult;}
+    if(state.minSh!=null&&state.minSh!==''){const el=document.getElementById('fMinSh');if(el)el.value=state.minSh;}
     if(state.fvol){
       const el=document.getElementById('fVol');if(el)el.value=state.fvol;
       VOL_AUTO=false;
@@ -4675,6 +4575,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
