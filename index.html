@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 11:41 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 13:49 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1322,8 +1322,8 @@ function runEngine(raw, sessionTag){
   // filtered (display set): additionally exclude UC, non-EQ series, and surveillance.
   const _liqMinVol=parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT;
   const _liqMinTurnover=parseFloat(document.getElementById('fMinTurnover')?.value)||0;
-  REMOVED={uc:0,surv:0,survRules:{},liq:0,
-    rockets:{uc:[],surv:[],liq:[]}};
+  REMOVED={uc:0,surv:0,survRules:{},liq:0,deliv:0,fade:0,
+    rockets:{uc:[],surv:[],liq:[],deliv:[],fade:[]}};
   const _dataQualityFail=(d)=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
@@ -1357,6 +1357,22 @@ function runEngine(raw, sessionTag){
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
     if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
+    // Delivery floor: legacy profitable engine excluded <30% delivery. Null = no data,
+    // also excluded (safer default since the profitable run had this filter active).
+    // Applied to display only — learning still sees these stocks per the user's
+    // documented principle that learning population should not be narrowed without
+    // empirical evidence of contamination.
+    const del=d.delivery_pct;
+    if(del===null||del<30){REMOVED.deliv++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.deliv.push({sym,pc});return false;}
+    // Peak retention floor: stock has given back >50% of today's intraday range — fading.
+    // Only apply when the day's range is meaningful (>1% of price); avoids cutting
+    // stocks with tight ranges where peak_retention is noisy.
+    const hi1d=K.high_1d?d[K.high_1d]:null, lo1d=K.low_1d?d[K.low_1d]:null;
+    if(hi1d!=null&&lo1d!=null&&lo1d>0&&(hi1d-lo1d)/lo1d>0.01){
+      if(d.peak_retention!=null&&d.peak_retention<50){
+        REMOVED.fade++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.fade.push({sym,pc});return false;
+      }
+    }
     // Surveillance: don't remove; tag for badge display. Still track rule counts for the
     // surveillance P&L correlation table in methodology.
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
@@ -1434,9 +1450,10 @@ function runEngine(raw, sessionTag){
   // Sort: biggest yesterday movers first
   yesterdayRockets.sort((a,b)=>b.yesterdayChg-a.yesterdayChg);
 
-  // Learning target = only TODAY's fresh rockets.
-  // Yesterday's held rockets are NOT added to labelMap — a stock that already ran is at the
-  // end of its move, not the beginning. goodRocketsToday is kept for display only (methodology panel).
+  // Learning target = today's fresh rockets + yesterday's rockets that held (durability signal).
+  // qualitySet here is for display/metadata only (counts shown in methodology panel).
+  // The actual training target is `labelMap` — which already includes goodRocketsToday
+  // via the `labelMap.set(idx, ...)` call in the lagged loop above.
   const qualitySet=new Set([...topSetToday]);
   const topN=topSetToday.size;
 
@@ -1494,40 +1511,7 @@ function runEngine(raw, sessionTag){
   // EMA: α ramps from 1.0 (session 1) down to 0.1 (steady state, half-life ~7 sessions)
   const EMA_ALPHA = accSessions < 2 ? 1 : Math.max(0.1, 1 / accSessions);
 
-  // ── P&L feedback: scale α by how well trades bought on the previous session performed ──
-  // For each buy date in tradebook, compute mean(netPnl / max(holdDays,1)) — P&L per day held.
-  // This rewards fast profitable trades more than slow ones (your stated preference).
-  // Normalize across all buy dates: pnlFactor = sigmoid-like mapping centered at 1.0.
-  // Sessions where your trades made good P&L-per-day → learn more from that session's features.
-  // Sessions where trades lost → learn less (α suppressed, but never below 0.3× base).
-  let pnlFactor = 1.0; // default: no adjustment when tradebook not loaded
-  if(isNewDay && TRADEBOOK_STATS?.tripsData?.length && ACC_CORR?.lastDate){
-    const trips = TRADEBOOK_STATS.tripsData;
-    // Build buyDate → mean P&L-per-day across all dates
-    const bdMap = {};
-    trips.forEach(r => {
-      if(!r.buyDate || r.netPnl == null) return;
-      const ppd = r.netPnl / Math.max(r.holdDays || 0, 1);
-      if(!bdMap[r.buyDate]) bdMap[r.buyDate] = [];
-      bdMap[r.buyDate].push(ppd);
-    });
-    const bdVals = Object.values(bdMap).map(arr => arr.reduce((s,v)=>s+v,0)/arr.length);
-    if(bdVals.length >= 3) { // need enough history to normalize
-      const bdMean = bdVals.reduce((s,v)=>s+v,0) / bdVals.length;
-      const bdSd = Math.sqrt(bdVals.reduce((s,v)=>s+(v-bdMean)**2,0)/bdVals.length) || 1;
-      // Look up previous session date (ACC_CORR.lastDate = the date we're now blending in)
-      const prevDatePpd = bdMap[ACC_CORR.lastDate]
-        ? bdMap[ACC_CORR.lastDate].reduce((s,v)=>s+v,0)/bdMap[ACC_CORR.lastDate].length
-        : null;
-      if(prevDatePpd != null) {
-        // z-score of that session's P&L-per-day, mapped to [0.3, 1.7] range
-        const z = (prevDatePpd - bdMean) / bdSd;
-        pnlFactor = Math.min(1.7, Math.max(0.3, 1.0 + 0.35 * Math.tanh(z)));
-      }
-    }
-  }
-
-  const blendAlpha = isNewDay ? EMA_ALPHA * pnlFactor : (accSessions > 0 ? 1/accSessions : 1);
+  const blendAlpha = isNewDay ? EMA_ALPHA : (accSessions > 0 ? 1/accSessions : 1);
 
   const learningCorr={};
   for(const f of FEATS){
@@ -1542,8 +1526,7 @@ function runEngine(raw, sessionTag){
   // Save single accumulator
   ACC_CORR={corr:{},sessions:accSessions+(isNewDay?1:0),
             lastDate:_today,lastUpdated:new Date().toISOString(),
-            laggedNote:laggedNote,regime:regime,
-            lastPnlFactor:isNewDay?pnlFactor:((ACC_CORR?.lastPnlFactor)??1.0)};
+            laggedNote:laggedNote,regime:regime};
   for(const f of FEATS) ACC_CORR.corr[f]=learningCorr[f];
   FS.set(CORR_STORE,ACC_CORR);
 
@@ -1934,6 +1917,8 @@ function renderStats(){
   const _survInFilt=FILT.filter(s=>s.isSurv).length;
   if(_survInFilt>0){const _sre=Object.entries(REMOVED.survRules||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const _srm=Object.fromEntries(getSurvRules().map(r=>[r.key,r.label]));const _srtip=_sre.map(([k,v])=>`${_srm[k]||k}: ${v}`).join(' · ');filterPills.push(`<span class="info-pill pill-red" title="Shown with ⚠ SURV badge — surveillance-flagged but visible. Top rules: ${escHtml(_srtip)}">⚠ ${_survInFilt} surveillance flagged</span>`);}
   if(REMOVED.liq>0)filterPills.push(`<span class="info-pill pill-blue">🚫 ${REMOVED.liq} low liquidity removed</span>`);
+  if(REMOVED.deliv>0){const _dR=REMOVED.rockets?.deliv||[];const _dTip=_dR.length?'Low-delivery rockets hidden: '+_dR.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', '):'Delivery <30% — display only; learning still sees these';filterPills.push(`<span class="info-pill pill-gray" title="${escHtml(_dTip)}">🚫 ${REMOVED.deliv} low delivery (&lt;30%) removed</span>`);}
+  if(REMOVED.fade>0){const _fR=REMOVED.rockets?.fade||[];const _fTip=_fR.length?'Faded rockets hidden: '+_fR.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', '):'Peak retention <50% — given back half the day\'s range';filterPills.push(`<span class="info-pill pill-gray" title="${escHtml(_fTip)}">🚫 ${REMOVED.fade} fading (peak ret &lt;50%) removed</span>`);}
   const topUpCt=FILT.filter(s=>s._isTopUp).length;
   if(topUpCt>0)filterPills.push(`<span class="info-pill pill-fire" title="Already in portfolio — shown as top-up candidates.">↑ ${topUpCt} top-up</span>`);
   if(SUPPRESSED_HELD>0)filterPills.push(`<span class="info-pill pill-rose" title="Short positions and zero-qty holdings are always hidden.">📌 ${SUPPRESSED_HELD} held</span>`);
@@ -2689,7 +2674,7 @@ function buildHardFilterMethodologyHTML(E){
       ? `<div style="font-size:11px;color:var(--amber);margin-top:8px">Showing last saved run (${survSize} flagged). Load NSE ZIP this session to refresh.</div>`
       : `<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:11px;color:var(--red)">NSE REG1 data not active — surveillance rows shown for configuration only, won't filter until a REG1 file is loaded.</div>`);
 
-  const totalRemoved=(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0);
+  const totalRemoved=(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)+(REMOVED.deliv||0)+(REMOVED.fade||0);
   return `
     <h3 id="meth-filters" style="margin-top:28px">Hard Filters <span style="font-size:12px;color:var(--t3);font-weight:400">(${totalRemoved} removals in latest saved run)</span></h3>
 
@@ -2860,7 +2845,7 @@ function renderMethodology(){
     <div class="regime-badge" style="color:${regimeColor}">${regimeIcon} ${(E.regime||'neutral').toUpperCase()}</div>
     <div class="regime-meta">
       <div style="color:var(--t1);font-weight:600">${corrSource}</div>
-      <div>Breadth: ${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0)+'%':'?'} · ${sessLabel}${E.rocketCount!=null?' · 🚀 '+E.rocketCount+' rockets (≥'+(E.rocketThreshold||10)+'%)':''}${ACC_CORR?.lastPnlFactor!=null&&ACC_CORR.lastPnlFactor!==1.0?' · P&L weight: <span style="color:'+(ACC_CORR.lastPnlFactor>=1?'var(--green)':'var(--orange)')+'">'+ACC_CORR.lastPnlFactor.toFixed(2)+'×</span>':''}</div>
+      <div>Breadth: ${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0)+'%':'?'} · ${sessLabel}${E.rocketCount!=null?' · 🚀 '+E.rocketCount+' rockets (≥'+(E.rocketThreshold||10)+'%)':''}</div>
     </div>
     <div class="regime-sessions">
       <span>${E.accSessions||0} sessions</span>
@@ -2967,7 +2952,7 @@ function renderMethodology(){
       <div class="m-card"><h4>🚀 What is a Rocket?</h4><p>Every trading day, regardless of what the broader market is doing, a small subset of NSE stocks moves <strong>≥${E.rocketThreshold||10}% intraday</strong>. These are Rockets. They don't happen randomly — stocks that become rockets tend to share measurable characteristics <em>the day before</em> they move. The engine's job is to find those stocks before the move, not explain them after.</p></div>
       <div class="m-card"><h4>📡 How the Engine Learns</h4><p>After each session, the engine correlates <strong>yesterday's feature values</strong> against <strong>today's actual rockets</strong>. Features that consistently appeared in rockets get higher weight; features that didn't get lower weight. Tomorrow's recommendations are stocks that look like yesterday's rockets — but haven't moved yet. The target label is quality-adjusted: yesterday's rockets that <em>held</em> today reinforce the signal; those that collapsed are treated as 0, so the engine learns to find durable moves, not fragile spikes.</p></div>
       <div class="m-card"><h4>🎯 Max 1D Filter</h4><p>Set <em>Max 1D %</em> in the filter bar to hide stocks that have already moved too much today (default 8.5%). Stocks above this threshold are skipped — they have less runway to reach target before becoming rockets themselves. Adjust based on how much room you want from entry to the rocket threshold.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before display: upper circuit (≥19.5%), non-EQ series (BE/BZ/SZ etc. — also excluded from learning), low liquidity (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()}${parseFloat(document.getElementById('fMinTurnover')?.value)>0?' or turnover &lt;₹'+(parseFloat(document.getElementById('fMinTurnover')?.value)/1e5).toFixed(1)+'L':''} at open). Surveillance-listed stocks are <strong>shown with a ⚠ SURV badge</strong> instead of being removed — decide per stock. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before display: upper circuit (≥19.5%), non-EQ series (BE/BZ/SZ etc. — also excluded from learning), low liquidity (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()}${parseFloat(document.getElementById('fMinTurnover')?.value)>0?' or turnover &lt;₹'+(parseFloat(document.getElementById('fMinTurnover')?.value)/1e5).toFixed(1)+'L':''} at open), <strong>delivery &lt;30%</strong>, and <strong>peak retention &lt;50%</strong> (fading; only when day range &gt;1%). Delivery + fade filters apply to display only — learning still sees these stocks. Surveillance-listed stocks are <strong>shown with a ⚠ SURV badge</strong> instead of being removed — decide per stock. Currently filtered: ${totalRemoved} stocks.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Market Regime</h4><p>Today's market: <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% stocks advancing). Bull ≥55%, Bear &lt;35%. Regime is shown for context only — the learning accumulator is regime-agnostic, so the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s full universe and fed into mRMR as features. Stocks outperforming their sector score higher regardless of market direction.</p></div>
     </div>
@@ -4367,7 +4352,7 @@ async function initApp(){
         COLS=getCols();
         // Restore REMOVED counts so filter pills show correctly on page load
         if(meth.removed&&typeof meth.removed==='object'){
-          REMOVED={uc:0,surv:0,survRules:{},liq:0,...meth.removed};
+          REMOVED={uc:0,surv:0,survRules:{},liq:0,deliv:0,fade:0,...meth.removed};
           if(typeof REMOVED.survRules!=='object'||Array.isArray(REMOVED.survRules)) REMOVED.survRules={};
         }
         console.log('INIT: restored methodology data,',meth.features.length,'features');
@@ -4627,6 +4612,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
