@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 15:04 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 15:11 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2897,66 +2897,9 @@ function _renderMethodologyInner(){
     pairsHTML+=`<p style="color:var(--t3);font-size:11px;margin-top:8px">${dropList.length} drop candidates from ${allPairs.length} redundant pairs. Each feature listed once — attributed to its strongest overlapping partner.</p>`;
   }
 
-  // ── Weakest Contributors (Pruning) ──
-  const bottomN=Math.max(5,Math.floor(sorted.length*0.20));
-  const weakCandidates=[...sorted].reverse().slice(0,bottomN);
-  function isWeakInRegime(feat,accCorr){
-    if(!accCorr||!accCorr.corr||accCorr.sessions<2) return null;
-    const r=accCorr.corr[feat];
-    return (r==null||Math.abs(r)<0.05);
-  }
-  const weakFeats=weakCandidates.filter(f=>{
-    const bW=isWeakInRegime(f,ACC_CORR_BULL), beW=isWeakInRegime(f,ACC_CORR_BEAR), nW=isWeakInRegime(f,ACC_CORR_NEUT);
-    const withData=[bW,beW,nW].filter(v=>v!==null);
-    return withData.length>0 && withData.every(v=>v===true);
-  });
-  let weakHTML='';
-  if(weakFeats.length===0){
-    weakHTML='<p style="color:var(--t3);font-style:italic">No features are weak across all regimes — nothing safe to prune yet.</p>';
-  } else {
-    weakHTML=`<table class="ct"><thead><tr>
-      <th>Feature</th><th>Target r (acc)</th><th>Redundancy</th><th>mRMR Score</th><th>🐂 Bull</th><th>🐻 Bear</th><th>➡ Neutral</th><th>Verdict</th>
-    </tr></thead><tbody>`;
-    for(const f of weakFeats){
-      const tc=E.targetCorr[f], m=E.mrmr[f];
-      const tcW=tc!=null&&isFinite(tc)?tc:0;
-      const bullR=ACC_CORR_BULL?.corr?.[f]??null;
-      const bearR=ACC_CORR_BEAR?.corr?.[f]??null;
-      const neutR=ACC_CORR_NEUT?.corr?.[f]??null;
-      const fmtR=r=>{
-        if(r==null||!isFinite(r)) return '<span style="color:var(--t3)">—</span>';
-        const c=Math.abs(r)>=0.1?'var(--green)':Math.abs(r)>=0.05?'var(--orange)':'var(--red)';
-        return `<span style="color:${c};font-weight:600">${r.toFixed(3)}</span>`;
-      };
-      const strongIn=[];
-      if(bullR!=null&&Math.abs(bullR)>=0.05) strongIn.push('🐂');
-      if(bearR!=null&&Math.abs(bearR)>=0.05) strongIn.push('🐻');
-      if(neutR!=null&&Math.abs(neutR)>=0.05) strongIn.push('➡');
-      let verdict;
-      if(strongIn.length>0) verdict='<span style="color:var(--green);font-weight:600">Strong in '+strongIn.join(' ')+'</span>';
-      else if(m&&m.red!=null&&isFinite(m.red)&&m.red>0.5) verdict='<span style="color:var(--orange);font-weight:600">Redundant</span>';
-      else verdict='<span style="color:var(--red);font-weight:600">Weak signal</span>';
-      const tcD=tc!=null&&isFinite(tc)?tc.toFixed(3):'—';
-      const redD=m&&m.red!=null&&isFinite(m.red)?m.red.toFixed(3):'—';
-      const scD=m&&m.score!=null&&isFinite(m.score)?m.score.toFixed(4):'—';
-      weakHTML+=`<tr>
-        <td style="font-size:11px;font-weight:600">${E.labels[f]||f}</td>
-        <td style="color:${Math.abs(tcW)<0.05?'var(--red)':'var(--t3)'}">${tcD}</td>
-        <td style="color:${(m&&m.red!=null&&isFinite(m.red)&&m.red>0.5)?'var(--orange)':'var(--t3)'}">${redD}</td>
-        <td style="color:var(--t3)">${scD}</td>
-        <td>${fmtR(bullR)}</td>
-        <td>${fmtR(bearR)}</td>
-        <td>${fmtR(neutR)}</td>
-        <td>${verdict}</td>
-      </tr>`;
-    }
-    weakHTML+='</tbody></table>';
-  }
-
   // Section counts for display
   const _featureCount=sorted.length;
   const _redundantCount=allPairs.length;
-  const _weakCount=weakFeats.length;
 
   const hardFiltersHTML=buildHardFilterMethodologyHTML(E);
   mc.innerHTML=`
@@ -2967,7 +2910,6 @@ function _renderMethodologyInner(){
       <a href="#meth-engine" onclick="event.preventDefault();scrollToSection('meth-engine')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">⚙ Engine</a>
       <a href="#meth-weights" onclick="event.preventDefault();scrollToSection('meth-weights')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">📊 Weights (${_featureCount})</a>
       <a href="#meth-redundant" onclick="event.preventDefault();scrollToSection('meth-redundant')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">🔁 Redundant (${_redundantCount})</a>
-      <a href="#meth-weak" onclick="event.preventDefault();scrollToSection('meth-weak')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">✂ Pruning (${_weakCount})</a>
     </nav>
     <div id="meth-hf-wrap">${hardFiltersHTML}</div>
     <div id="meth-regime">${regimeCardHTML}</div>
@@ -2987,10 +2929,7 @@ function _renderMethodologyInner(){
     <div class="corr-wrap">${wtHTML}</div>
     <h3 id="meth-redundant" style="margin-top:28px">Redundant Features — Drop Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_redundantCount} pairs)</span></h3>
     <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Feature pairs with |r| ≥ 0.7 — the weaker mRMR partner is the drop candidate. Each feature listed once, attributed to its strongest correlated partner. Safe to remove from your ALL NSE CSV.</p>
-    <div class="corr-wrap">${pairsHTML}</div>
-    <h3 id="meth-weak" style="margin-top:28px">Weakest Contributors — Pruning Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_weakCount})</span></h3>
-    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Bottom 20% of features by mRMR score that are also weak (|target r| &lt; 0.05) in every regime with ≥2 sessions. These have shown no predictive signal across all market conditions — safe to prune.</p>
-    <div class="corr-wrap">${weakHTML}</div>`;
+    <div class="corr-wrap">${pairsHTML}</div>`;
   setTimeout(()=>{_methTbls.hf?.render();_methTbls.sc?.render();},0);
 }
 
@@ -4639,6 +4578,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
