@@ -308,7 +308,8 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    </div></div>
 
    <div class="fg"><span class="fg-lbl">Min 1D %</span><input type="number" id="fMin1D" placeholder="e.g. 2" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
-   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="5" max="20" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="onRocketPctChangeUI()" title="Threshold for what counts as a rocket. Used for learning labels, the display ceiling, and the buy zone check. Default 10%. Lower it (e.g. 7) if you've excluded too many stocks and need more rocket samples to learn from."></div>
+   <div class="fg"><span class="fg-lbl">Max 1D %</span><input type="number" id="fMax1D" value="8.5" placeholder="e.g. 8.5" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="saveFilterState();applyFilters()" title="Hide stocks that have already moved too much today. Default 8.5%. Leaves runway for the position to hit target without becoming a rocket itself."></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="5" max="20" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="onRocketPctChangeUI()" title="Threshold for what counts as a rocket. Used by the engine for labeling rockets and by the runway calculation in mRMR learning. Default 10%. Learning impact on next CSV upload."></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this = Min Vol floor"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Min TV ₹</span><input type="number" id="fMinTurnover" placeholder="e.g. 1000000" min="0" step="500000" style="width:90px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min turnover (Price × Volume) in ₹. Blank = no filter. Recommended: 1000000 (₹10L) to ensure tradeable liquidity regardless of price."></div>
@@ -334,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 11:17 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 11:31 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -769,7 +770,6 @@ function calcAutoVolume(){
   return Math.round(minsFromOpen*mult);
 }
 let VOL_AUTO=true;
-const FILTER_BUY_ZONE=true; // always on — only stocks with price ≤ VWAP+0.5×ATR shown
 let _initInProgress=true; // suppresses applyFilters inside setAutoVolume during startup
 function setAutoVolume(){
   if(!VOL_AUTO) return;
@@ -1331,24 +1331,32 @@ function runEngine(raw, sessionTag){
     }
     return false;
   };
-  // learningSet: data-quality filter only. Surveillance/non-EQ/UC stay in learning because
-  // empirically (from the previously-profitable history) their features share predictive patterns
-  // with legitimate rockets. mRMR handles feature relevance via correlation; hard exclusion from
-  // learning would shrink the training sample without removing real contamination.
-  const learningSet=parsed.filter(d=>!_dataQualityFail(d));
-  // filtered (display): exclude UC (can't buy at market), surveillance-listed, and non-EQ series —
-  // these contribute to learning but can't be recommended.
+  // learningSet: data-quality + non-EQ exclusion. Non-EQ series (BE/BZ/SZ/SM/ST) have T2T
+  // settlement and aren't normal-tradeable; their features don't represent legitimate breakout
+  // dynamics. Surveillance-listed and UC stocks stay in learning (their patterns share signal
+  // with legitimate rockets per historical profitability).
+  const learningSet=parsed.filter(d=>{
+    if(_dataQualityFail(d)) return false;
+    if(NSE_NON_EQ.has(d.symbol)){
+      const pc=K.price_change?d[K.price_change]:null;
+      const sym=d.symbol;
+      REMOVED.surv++;
+      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
+      return false;
+    }
+    return true;
+  });
+  // filtered (display): exclude UC (can't buy at market). Surveillance-flagged stocks are
+  // shown with a visible badge so the user can decide per stock. Non-EQ already excluded above.
   const filtered=learningSet.filter(d=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
     if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
-    if(NSE_NON_EQ.has(d.symbol)){REMOVED.surv++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.surv.push({sym,pc});return false;}
+    // Surveillance: don't remove; tag for badge display. Still track rule counts for the
+    // surveillance P&L correlation table in methodology.
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
-      REMOVED.surv++;
       const primaryRule=NSE_SURV[d.symbol][0];
       if(primaryRule) REMOVED.survRules[primaryRule]=(REMOVED.survRules[primaryRule]||0)+1;
-      if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
-      return false;
     }
     return true;
   });
@@ -1586,6 +1594,9 @@ function runEngine(raw, sessionTag){
     const flags=[];
     if(NSE_BULK[d.symbol]) flags.push('BULK');
     if(NSE_BLOCK[d.symbol]) flags.push('BLK');
+    // Surveillance rules flagging this stock — used to show a warning badge in the table
+    const _survRules=NSE_SURV[d.symbol]||null;
+    const _isSurv=Array.isArray(_survRules)&&_survRules.length>0;
 
     let tier;
     if(score>=78)tier='S';else if(score>=64)tier='A';else if(score>=50)tier='B';else if(score>=38)tier='C';else tier='D';
@@ -1608,6 +1619,7 @@ function runEngine(raw, sessionTag){
       rangePos:d.range_pos,
       pctFrom52wHigh:d.pct_from_52w_high,
       rocketScore:score, tier, flags,
+      isSurv:_isSurv, survRules:_survRules,
       // Calculated SL/Target per stock — adaptive from tradebook if available
       slPct: (()=>{
         if(TRADEBOOK_STATS&&TRADEBOOK_STATS.adaptiveSL) return -TRADEBOOK_STATS.adaptiveSL;
@@ -1913,7 +1925,9 @@ function renderStats(){
   // Row 1: hard-filter removal pills
   const filterPills=[];
   const _ucRkt=REMOVED.rockets?.uc||[];if(_ucRkt.length)filterPills.push(`<span class="info-pill pill-red" title="UC rockets (learned from, not shown): ${_ucRkt.map(x=>x.sym+' +'+x.pc.toFixed(1)+'%').join(', ')}">⛔ ${_ucRkt.length} UC rockets</span>`);
-  if(REMOVED.surv>0){const _sre=Object.entries(REMOVED.survRules||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const _srm=Object.fromEntries(getSurvRules().map(r=>[r.key,r.label]));const _srtip=_sre.map(([k,v])=>`${_srm[k]||k}: ${v}`).join(' · ');filterPills.push(`<span class="info-pill pill-orange" title="${escHtml(_srtip)}">⚠ ${REMOVED.surv} surveillance removed</span>`);}
+  if(REMOVED.surv>0)filterPills.push(`<span class="info-pill pill-orange" title="Non-EQ series (BE/BZ/SZ/SM/ST) — excluded from learning and display because of T2T settlement.">⚠ ${REMOVED.surv} non-EQ removed</span>`);
+  const _survInFilt=FILT.filter(s=>s.isSurv).length;
+  if(_survInFilt>0){const _sre=Object.entries(REMOVED.survRules||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const _srm=Object.fromEntries(getSurvRules().map(r=>[r.key,r.label]));const _srtip=_sre.map(([k,v])=>`${_srm[k]||k}: ${v}`).join(' · ');filterPills.push(`<span class="info-pill pill-red" title="Shown with ⚠ SURV badge — surveillance-flagged but visible. Top rules: ${escHtml(_srtip)}">⚠ ${_survInFilt} surveillance flagged</span>`);}
   if(REMOVED.liq>0)filterPills.push(`<span class="info-pill pill-blue">🚫 ${REMOVED.liq} low liquidity removed</span>`);
   const topUpCt=FILT.filter(s=>s._isTopUp).length;
   if(topUpCt>0)filterPills.push(`<span class="info-pill pill-fire" title="Already in portfolio — shown as top-up candidates.">↑ ${topUpCt} top-up</span>`);
@@ -2947,8 +2961,8 @@ function renderMethodology(){
     <div class="m-grid">
       <div class="m-card"><h4>🚀 What is a Rocket?</h4><p>Every trading day, regardless of what the broader market is doing, a small subset of NSE stocks moves <strong>≥${E.rocketThreshold||10}% intraday</strong>. These are Rockets. They don't happen randomly — stocks that become rockets tend to share measurable characteristics <em>the day before</em> they move. The engine's job is to find those stocks before the move, not explain them after.</p></div>
       <div class="m-card"><h4>📡 How the Engine Learns</h4><p>After each session, the engine correlates <strong>yesterday's feature values</strong> against <strong>today's actual rockets</strong>. Features that consistently appeared in rockets get higher weight; features that didn't get lower weight. Tomorrow's recommendations are stocks that look like yesterday's rockets — but haven't moved yet. The target label is quality-adjusted: yesterday's rockets that <em>held</em> today reinforce the signal; those that collapsed are treated as 0, so the engine learns to find durable moves, not fragile spikes.</p></div>
-      <div class="m-card"><h4>🎯 Buy Zone — Runway to Target</h4><p>A recommended stock must still have <strong>runway to reach the target</strong> — it shouldn't be overextended at entry. A stock is in the buy zone when its current 1D gain plus the adaptive target stays below the rocket threshold: <em>1D% + TGT% &lt; ${(E.rocketThreshold||10)}%</em>. A stock already up ${((E.rocketThreshold||10)-(getEffectiveTgtPct()||3.7)).toFixed(1)}%+ has no room left to hit target without becoming a rocket itself — those are excluded.</p></div>
-      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before scoring: upper circuit (≥19.5%), surveillance-listed (NSE REG1 — see Hard Filters below), non-EQ series (BE/BZ/SZ etc.), low liquidity (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()}${parseFloat(document.getElementById('fMinTurnover')?.value)>0?' or turnover &lt;₹'+(parseFloat(document.getElementById('fMinTurnover')?.value)/1e5).toFixed(1)+'L':''} at open). Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
+      <div class="m-card"><h4>🎯 Max 1D Filter</h4><p>Set <em>Max 1D %</em> in the filter bar to hide stocks that have already moved too much today (default 8.5%). Stocks above this threshold are skipped — they have less runway to reach target before becoming rockets themselves. Adjust based on how much room you want from entry to the rocket threshold.</p></div>
+      <div class="m-card"><h4>🚫 Hard Filters</h4><p>Removed before display: upper circuit (≥19.5%), non-EQ series (BE/BZ/SZ etc. — also excluded from learning), low liquidity (volume &lt;${(parseFloat(document.getElementById('fVolMult')?.value)||LIQ_MIN_VOL_DEFAULT).toLocaleString()}${parseFloat(document.getElementById('fMinTurnover')?.value)>0?' or turnover &lt;₹'+(parseFloat(document.getElementById('fMinTurnover')?.value)/1e5).toFixed(1)+'L':''} at open). Surveillance-listed stocks are <strong>shown with a ⚠ SURV badge</strong> instead of being removed — decide per stock. Currently filtered: ${(REMOVED.uc||0)+(REMOVED.surv||0)+(REMOVED.liq||0)} stocks.</p></div>
       <div class="m-card"><h4>${E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡'} Market Regime</h4><p>Today's market: <strong style="color:${regimeColor}">${(E.regime||'neutral').toUpperCase()}</strong> (${E.marketBreadth!=null?(E.marketBreadth*100).toFixed(0):'?'}% stocks advancing). Bull ≥55%, Bear &lt;35%. Regime is shown for context only — the learning accumulator is regime-agnostic, so the engine is never data-starved on regime switches. ${E.useAccCorr?'Accumulator active ('+E.accSessions+' sessions).':'Warming up — need ≥2 sessions before historical correlations activate.'}</p></div>
       <div class="m-card"><h4>📊 Sector & Industry Breadth</h4><p>${E.sectorCol?'<span style="color:var(--green)">✓</span> Sector breadth, sector relative strength':'<span style="color:var(--red)">✗</span> No Sector column detected'}${E.industryCol?', <span style="color:var(--green)">✓</span> industry breadth':''} — computed from today\'s full universe and fed into mRMR as features. Stocks outperforming their sector score higher regardless of market direction.</p></div>
     </div>
@@ -2968,7 +2982,7 @@ function getCols(){
   const fixed=[
     {key:'chk',label:'',s:0},
     {key:'rocketScore',label:'Score',s:1},{key:'symbol',label:'Symbol',s:1},
-    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'buyRange',label:'Max Entry',s:0},{key:'delivPct',label:'Deliv%',s:1},
+    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'delivPct',label:'Deliv%',s:1},
     {key:'alloc',label:'Alloc ₹',s:0},{key:'volume',label:'Volume',s:1},
   ];
   // Dynamic columns from mRMR features — skip any that are all null across displayed stocks
@@ -3249,10 +3263,9 @@ function renderTable(){
     let cells=`
       <td style="text-align:center"><input type="checkbox" ${isSelected?'checked':''} style="width:14px;height:14px;accent-color:var(--amber);cursor:pointer" onchange="toggleStock('${s.symbol}',this.checked)"></td>
       <td><span class="sc-m">${isNaN(s.rocketScore)?'?':s.rocketScore.toFixed(1)}</span></td>
-      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:var(--t1)">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
+      <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:var(--t1)">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}${(()=>{if(!s.isSurv) return '';const labels=(s.survRules||[]).map(k=>{const r=SURV_CUSTOM_RULES.find(x=>x.key===k);return r?r.label:k;}).join(' · ');return `<span style="font-size:8px;background:rgba(239,68,68,.15);color:var(--red);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle" title="NSE Surveillance: ${escHtml(labels)}">⚠ SURV</span>`;})()}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
-      <td>${(()=>{const hi=getMaxEntry(s);if(hi===null)return'<span style="color:var(--t3)">—</span>';const tgt=getEffectiveTgtPct()||3.7;const ceiling=ENGINE_DATA?.rocketThreshold||10;return`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--cyan)" title="Max entry price — buying here still leaves full TGT% (${tgt.toFixed(2)}%) before the ${ceiling}% ceiling">₹${hi.toFixed(2)}</span>`})()}</td>
       <td>${fDel(s.delivPct)}</td>
       <td class="alloc-cell" data-sym="${s.symbol}">${(()=>{
         if(!am) return '<span style="color:var(--t3);font-size:11px">—</span>';
@@ -3320,34 +3333,22 @@ function toggleFilters(){
   const collapsed=p.classList.toggle('collapsed');
   if(a) a.textContent=collapsed?'▶':'▼';
 }
-function getMaxEntry(s){
-  const pc=s.priceChange;
-  if(!s.price||pc==null||!isFinite(pc)) return null;
-  const tgt=getEffectiveTgtPct()||3.7;
-  const ceiling=ENGINE_DATA?.rocketThreshold||10;
-  const openPrice=s.price/(1+pc/100);
-  return tickPrice(openPrice*(1+ceiling/100)/(1+tgt/100));
-}
-function isBuyZone(s){
-  const maxEntry=getMaxEntry(s);
-  if(maxEntry===null) return false;
-  return s.price<=maxEntry+0.01;
-}
 function applyFilters(){
   const minScore=parseFloat(document.getElementById('fMinScore')?.value)||0;
   const fvol=parseFloat(document.getElementById('fVol')?.value)||0;
   const _fMin1Dv=document.getElementById('fMin1D')?.value||'';
   const fMin1D=_fMin1Dv!==''?parseFloat(_fMin1Dv):-Infinity;
+  const _fMax1Dv=document.getElementById('fMax1D')?.value||'';
+  const fMax1D=_fMax1Dv!==''?parseFloat(_fMax1Dv):Infinity;
   const fPriceMin=parseFloat(document.getElementById('fPriceMin')?.value)||0;
   const fPriceMax=parseFloat(document.getElementById('fPriceMax')?.value)||0;
 
-  const _ceiling=ENGINE_DATA?.rocketThreshold||null;
   FILT=ALL.filter(x=>{
     if(minScore>0&&x.rocketScore<minScore) return false;
     if(fvol>0){if((x.volume||0)<fvol)return false;}
     if(fMin1D>-Infinity){if(x.priceChange===null||x.priceChange<fMin1D)return false;}
+    if(fMax1D<Infinity){if(x.priceChange===null||x.priceChange>fMax1D)return false;}
     if(fPriceMin>0&&(x.price||0)<fPriceMin)return false;
-    if(FILTER_BUY_ZONE&&!isBuyZone(x)) return false;
     if(fPriceMax>0&&(x.price||0)>fPriceMax)return false;
     return true;
   });
@@ -3491,6 +3492,7 @@ function renderStatusBar(){
 
 function clearFilters(){
   ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax','fMinTurnover'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const max1Del=document.getElementById('fMax1D');if(max1Del)max1Del.value='8.5';
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const rocketEl=document.getElementById('fRocketPct');if(rocketEl)rocketEl.value='10';
@@ -4492,6 +4494,7 @@ function saveFilterState(){
     volMult:document.getElementById('fVolMult')?.value||String(LIQ_MIN_VOL_DEFAULT),
     minTurnover:'',
     fMin1D:document.getElementById('fMin1D')?.value||'',
+    fMax1D:document.getElementById('fMax1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
     reDrop:document.getElementById('fReDrop')?.value||'1',
@@ -4510,6 +4513,7 @@ function loadFilterState(){
     if(state.priceMin){const el=document.getElementById('fPriceMin');if(el)el.value=state.priceMin;}
     if(state.priceMax){const el=document.getElementById('fPriceMax');if(el)el.value=state.priceMax;}
     if(state.fMin1D){const el=document.getElementById('fMin1D');if(el)el.value=state.fMin1D;}
+    if(state.fMax1D!=null){const el=document.getElementById('fMax1D');if(el)el.value=state.fMax1D;}
     if(state.capital){const el=document.getElementById('fCapital');if(el)el.value=state.capital;}
     if(state.maxAlloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.maxAlloc;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
@@ -4618,6 +4622,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
