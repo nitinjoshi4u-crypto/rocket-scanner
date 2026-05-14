@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-13 15:55 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 09:21 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1127,9 +1127,9 @@ function runEngine(raw, sessionTag){
   if(!raw.length) return;
   // isNewDay: first upload of each trading day increments session count and EMA-blends.
   // Same-day re-uploads recompute correlations but don't increment session count.
-  // Market hours guard: never accumulate outside 9:00-16:00 IST.
+  // No market-hours guard — lagged learning uses yesterday's snapshot regardless of upload time.
   const _today=getSessionDate();
-  const _isMarket=isMarketHours();
+  const _isMarket=true;
 
   // ── Auto-detect columns from CSV headers ──
   const allHeaders = Object.keys(raw[0]);
@@ -4582,6 +4582,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
