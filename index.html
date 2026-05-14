@@ -312,7 +312,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="5" max="20" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="onRocketPctChangeUI()" title="Threshold for what counts as a rocket. Used by the engine for labeling rockets and by the runway calculation in mRMR learning. Default 10%. Learning impact on next CSV upload."></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this = Min Vol floor"></div>
-   <div class="fg"><span class="fg-lbl" style="font-size:8px">Min TV ₹</span><input type="number" id="fMinTurnover" placeholder="e.g. 1000000" min="0" step="500000" style="width:90px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min turnover (Price × Volume) in ₹. Blank = no filter. Recommended: 1000000 (₹10L) to ensure tradeable liquidity regardless of price."></div>
+   <div class="fg"><span class="fg-lbl" style="font-size:8px">Min TV ₹</span><input type="number" id="fMinTurnover" placeholder="e.g. 1000000" value="1000000" min="0" step="500000" style="width:90px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min turnover (Price × Volume) in ₹. Blank = no filter. Recommended: 1000000 (₹10L) to ensure tradeable liquidity regardless of price."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Capital ₹</span><input type="number" id="fCapital" placeholder="e.g. 100000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--amber)">Max Alloc ₹</span><input type="number" id="fMaxAlloc" placeholder="e.g. 20000" min="0" step="1000" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Per-stock cap for allocation. Empty = no cap."></div>
    <div class="fg"><span class="fg-lbl" style="color:var(--purple)">Avg-dn %</span><input type="number" id="fReDrop" value="1" placeholder="1" min="0" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()" title="Stock must have fallen at least this % below your avg buy to appear as a top-up candidate. Shorts and zero-qty always suppressed."></div>
@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 14:58 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 15:04 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1395,15 +1395,6 @@ function runEngine(raw, sessionTag){
     if(pc!=null&&pc>=ROCKET_THRESHOLD) topSetToday.add(i);
   });
 
-  // Auto-set Min Turnover to lowest rocket turnover (persisted across reload)
-  if(K.turnover && topSetToday.size > 0){
-    const rocketTurnovers=[...topSetToday]
-      .map(i=>filtered[i][K.turnover])
-      .filter(v=>v!=null&&v>0);
-    if(rocketTurnovers.length > 0){
-      FS.set('rs_min_turnover', Math.round(Math.min(...rocketTurnovers)));
-    }
-  }
 
   // ── Quality-adjusted target: union of today's rockets + yesterday's held rockets ──
   // Yesterday's rockets that held → label = 1 (durability signal — reinforce)
@@ -4495,13 +4486,7 @@ async function initApp(){
   // Step 5: Load filter state (still from localStorage)
   try{loadFilterState();}catch(e){console.error('INIT step5 loadFilterState failed:',e);}
 
-  // Step 5b: Restore auto-set turnover floor from brain (survives post-upload reload)
-  try{
-    const savedTV=await FS.get('rs_min_turnover');
-    if(savedTV){const el=document.getElementById('fMinTurnover');if(el)el.value=savedTV;}
-  }catch(e){}
-
-  // Step 5c: Set auto volume (must be after loadFilterState so fVolMult is restored first)
+  // Step 5b: Set auto volume (must be after loadFilterState so fVolMult is restored first)
   try{setAutoVolume();}catch(e){}
 
   // Step 6: Show header + dash before applyFilters so renderTable works into a visible element
@@ -4524,7 +4509,7 @@ function saveFilterState(){
     priceMax:document.getElementById('fPriceMax')?.value||'',
     fvol:VOL_AUTO?'':document.getElementById('fVol')?.value||'',
     volMult:document.getElementById('fVolMult')?.value||String(LIQ_MIN_VOL_DEFAULT),
-    minTurnover:'',
+    minTurnover:document.getElementById('fMinTurnover')?.value||'1000000',
     fMin1D:document.getElementById('fMin1D')?.value||'',
     fMax1D:document.getElementById('fMax1D')?.value||'',
     capital:document.getElementById('fCapital')?.value||'',
@@ -4654,6 +4639,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
