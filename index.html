@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 14:20 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 14:48 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1886,7 +1886,7 @@ function renderStats(){
     }</div><div class="st-d">${ENGINE_DATA.marketBreadth!=null?(ENGINE_DATA.marketBreadth*100).toFixed(0):(bull/t*100).toFixed(0)}% breadth · ${
       ENGINE_DATA.regimeSessions
         ? (ENGINE_DATA.regimeSessions.bull||0)+'🐂 '+(ENGINE_DATA.regimeSessions.bear||0)+'🐻 '+(ENGINE_DATA.regimeSessions.neutral||0)+'➡'
-        : (ENGINE_DATA.accSessions||0)
+        : '0🐂 0🐻 0➡'
     } sessions</div></div>${bookedCard}`;
 
   // Row 1: hard-filter removal pills
@@ -2827,7 +2827,8 @@ function _renderMethodologyInner(){
   const regimeIcon = E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡';
   const regimeColor = E.regime==='bull'?'var(--green)':E.regime==='bear'?'var(--red)':'var(--orange)';
   const corrSource = E.useRegimeCorr?'Regime-specific correlations active':(E.useAccCorr?'Combined fallback (regime <2 sessions)':'Warming up (need ≥2 sessions)');
-  const sessLabel = `${E.accSessions||0} sessions · ${E.laggedNote||'lagged learning starts next upload'}`;
+  const regimeTotal = (rs.bull||0)+(rs.bear||0)+(rs.neutral||0);
+  const sessLabel = `${regimeTotal} sessions · ${E.laggedNote||'lagged learning starts next upload'}`;
 
   const regimeCardHTML=`<div class="regime-bar">
     <div class="regime-badge" style="color:${regimeColor}">${regimeIcon} ${(E.regime||'neutral').toUpperCase()}</div>
@@ -2862,68 +2863,110 @@ function _renderMethodologyInner(){
   }
   wtHTML+='</tbody></table>';
 
-  // ── Redundancy Analysis ──
-  // A feature is redundant if its mean |r| with all other features (mrmr[f].red)
-  // is more than 1σ above the mean — i.e. it's an outlier in the redundancy distribution.
-  // For each redundant feature, show the single partner it's most correlated with.
+  // ── Redundancy Analysis: deduplicated drop candidates (|r| ≥ 0.7) ──
   const hasInterCorr = E.interCorr && Object.keys(E.interCorr).length > 0;
   let pairsHTML='';
-  let _redundantFeats=[];
+  const allPairs=[];
+  if(hasInterCorr){
+    for(let a=0;a<sorted.length;a++){
+      for(let b=a+1;b<sorted.length;b++){
+        const f1=sorted[a],f2=sorted[b];
+        const r=(E.interCorr&&E.interCorr[f1+'|'+f2])||0;
+        if(Math.abs(r)>=0.7) allPairs.push({f1,f2,r});
+      }
+    }
+    allPairs.sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+  }
   if(!hasInterCorr){
     pairsHTML='<p style="color:var(--t3);font-style:italic">Inter-feature correlations not available — upload ALL NSE.csv once to compute and persist.</p>';
+  } else if(allPairs.length===0){
+    pairsHTML='<p style="color:var(--t3);font-style:italic">No feature pairs with |r| ≥ 0.7 found — low redundancy across all features.</p>';
   } else {
-    // Compute mean and σ of redundancy scores across all features
-    const redVals=sorted.filter(f=>E.mrmr[f]).map(f=>E.mrmr[f].red||0);
-    const redMean=redVals.reduce((s,v)=>s+v,0)/redVals.length;
-    const redSd=Math.sqrt(redVals.reduce((s,v)=>s+(v-redMean)**2,0)/redVals.length);
-    const threshold=redMean+redSd; // 1σ above mean
-
-    // For each high-redundancy feature, find the strongest single partner
     const dropMap={};
-    for(const f of sorted){
-      if(!E.mrmr[f]||(E.mrmr[f].red||0)<=threshold) continue;
-      // Find which specific feature it's most correlated with
-      let bestPartner=null, bestR=0;
-      for(const g of sorted){
-        if(g===f||!E.mrmr[g]) continue;
-        const r=Math.abs(E.interCorr[f+'|'+g]??0);
-        if(r>bestR){bestR=r;bestPartner=g;}
-      }
-      if(!bestPartner) continue;
-      // Drop the weaker mRMR partner
-      const fScore=E.mrmr[f].score, gScore=E.mrmr[bestPartner].score;
-      const drop=fScore<=gScore?f:bestPartner, keep=fScore<=gScore?bestPartner:f;
-      if(!dropMap[drop]||bestR>dropMap[drop].r){
-        dropMap[drop]={redundantWith:keep,r:bestR,redScore:E.mrmr[drop].red||0,keepScore:E.mrmr[keep].score,dropScore:E.mrmr[drop].score};
-      }
+    for(const {f1,f2,r} of allPairs){
+      const s1=E.mrmr[f1]?.score||0, s2=E.mrmr[f2]?.score||0;
+      const keep=s1>=s2?f1:f2, drop=s1>=s2?f2:f1;
+      if(!dropMap[drop]) dropMap[drop]={redundantWith:keep,r:r,keepScore:E.mrmr[keep]?.score||0,dropScore:E.mrmr[drop]?.score||0};
     }
-    _redundantFeats=Object.entries(dropMap).sort((a,b)=>b[1].redScore-a[1].redScore);
+    const dropList=Object.entries(dropMap).sort((a,b)=>Math.abs(b[1].r)-Math.abs(a[1].r));
+    pairsHTML=`<table class="ct"><thead><tr>
+      <th>Drop Candidate</th><th>mRMR</th>
+      <th>Redundant With</th><th>mRMR</th><th>|r|</th>
+    </tr></thead><tbody>`;
+    for(const [feat,info] of dropList){
+      const rC=Math.abs(info.r)>=0.9?'var(--red)':Math.abs(info.r)>=0.8?'var(--orange)':'var(--amber)';
+      pairsHTML+=`<tr>
+        <td style="color:var(--red);font-size:11px;font-weight:600">${E.labels[feat]||feat}</td>
+        <td style="color:var(--t3);font-size:10px">${info.dropScore.toFixed(4)}</td>
+        <td style="color:var(--green);font-size:11px;font-weight:600">${E.labels[info.redundantWith]||info.redundantWith}</td>
+        <td style="color:var(--t3);font-size:10px">${info.keepScore.toFixed(4)}</td>
+        <td style="color:${rC};font-weight:700">${Math.abs(info.r).toFixed(3)}</td>
+      </tr>`;
+    }
+    pairsHTML+='</tbody></table>';
+    pairsHTML+=`<p style="color:var(--t3);font-size:11px;margin-top:8px">${dropList.length} drop candidates from ${allPairs.length} redundant pairs. Each feature listed once — attributed to its strongest overlapping partner.</p>`;
+  }
 
-    if(_redundantFeats.length===0){
-      pairsHTML=`<p style="color:var(--t3);font-style:italic">No features exceed the redundancy threshold (mean+1σ = ${threshold.toFixed(3)}) — all features contribute distinct information.</p>`;
-    } else {
-      pairsHTML=`<table class="ct"><thead><tr>
-        <th>Drop Candidate</th><th>Avg |r| (redundancy)</th>
-        <th>Strongest Partner</th><th>|r| with partner</th><th>mRMR score</th>
-      </tr></thead><tbody>`;
-      for(const [feat,info] of _redundantFeats){
-        const rC=info.r>=0.7?'var(--red)':info.r>=0.5?'var(--orange)':'var(--amber)';
-        pairsHTML+=`<tr>
-          <td style="color:var(--red);font-size:11px;font-weight:600">${E.labels[feat]||feat}</td>
-          <td style="color:var(--orange);font-weight:700;font-family:'DM Mono',monospace">${info.redScore.toFixed(3)}</td>
-          <td style="color:var(--green);font-size:11px;font-weight:600">${E.labels[info.redundantWith]||info.redundantWith}</td>
-          <td style="color:${rC};font-weight:700;font-family:'DM Mono',monospace">${info.r.toFixed(3)}</td>
-          <td style="color:var(--t3);font-size:10px">${info.dropScore.toFixed(4)}</td>
-        </tr>`;
-      }
-      pairsHTML+=`</tbody></table>`;
-      pairsHTML+=`<p style="color:var(--t3);font-size:11px;margin-top:8px">${_redundantFeats.length} features exceed redundancy threshold (mean ${redMean.toFixed(3)} + 1σ ${redSd.toFixed(3)} = ${threshold.toFixed(3)}). Safe to remove from your ALL NSE CSV.</p>`;
+  // ── Weakest Contributors (Pruning) ──
+  const bottomN=Math.max(5,Math.floor(sorted.length*0.20));
+  const weakCandidates=[...sorted].reverse().slice(0,bottomN);
+  function isWeakInRegime(feat,accCorr){
+    if(!accCorr||!accCorr.corr||accCorr.sessions<2) return null;
+    const r=accCorr.corr[feat];
+    return (r==null||Math.abs(r)<0.05);
+  }
+  const weakFeats=weakCandidates.filter(f=>{
+    const bW=isWeakInRegime(f,ACC_CORR_BULL), beW=isWeakInRegime(f,ACC_CORR_BEAR), nW=isWeakInRegime(f,ACC_CORR_NEUT);
+    const withData=[bW,beW,nW].filter(v=>v!==null);
+    return withData.length>0 && withData.every(v=>v===true);
+  });
+  let weakHTML='';
+  if(weakFeats.length===0){
+    weakHTML='<p style="color:var(--t3);font-style:italic">No features are weak across all regimes — nothing safe to prune yet.</p>';
+  } else {
+    weakHTML=`<table class="ct"><thead><tr>
+      <th>Feature</th><th>Target r (acc)</th><th>Redundancy</th><th>mRMR Score</th><th>🐂 Bull</th><th>🐻 Bear</th><th>➡ Neutral</th><th>Verdict</th>
+    </tr></thead><tbody>`;
+    for(const f of weakFeats){
+      const tc=E.targetCorr[f], m=E.mrmr[f];
+      const tcW=tc!=null&&isFinite(tc)?tc:0;
+      const bullR=ACC_CORR_BULL?.corr?.[f]??null;
+      const bearR=ACC_CORR_BEAR?.corr?.[f]??null;
+      const neutR=ACC_CORR_NEUT?.corr?.[f]??null;
+      const fmtR=r=>{
+        if(r==null||!isFinite(r)) return '<span style="color:var(--t3)">—</span>';
+        const c=Math.abs(r)>=0.1?'var(--green)':Math.abs(r)>=0.05?'var(--orange)':'var(--red)';
+        return `<span style="color:${c};font-weight:600">${r.toFixed(3)}</span>`;
+      };
+      const strongIn=[];
+      if(bullR!=null&&Math.abs(bullR)>=0.05) strongIn.push('🐂');
+      if(bearR!=null&&Math.abs(bearR)>=0.05) strongIn.push('🐻');
+      if(neutR!=null&&Math.abs(neutR)>=0.05) strongIn.push('➡');
+      let verdict;
+      if(strongIn.length>0) verdict='<span style="color:var(--green);font-weight:600">Strong in '+strongIn.join(' ')+'</span>';
+      else if(m&&m.red!=null&&isFinite(m.red)&&m.red>0.5) verdict='<span style="color:var(--orange);font-weight:600">Redundant</span>';
+      else verdict='<span style="color:var(--red);font-weight:600">Weak signal</span>';
+      const tcD=tc!=null&&isFinite(tc)?tc.toFixed(3):'—';
+      const redD=m&&m.red!=null&&isFinite(m.red)?m.red.toFixed(3):'—';
+      const scD=m&&m.score!=null&&isFinite(m.score)?m.score.toFixed(4):'—';
+      weakHTML+=`<tr>
+        <td style="font-size:11px;font-weight:600">${E.labels[f]||f}</td>
+        <td style="color:${Math.abs(tcW)<0.05?'var(--red)':'var(--t3)'}">${tcD}</td>
+        <td style="color:${(m&&m.red!=null&&isFinite(m.red)&&m.red>0.5)?'var(--orange)':'var(--t3)'}">${redD}</td>
+        <td style="color:var(--t3)">${scD}</td>
+        <td>${fmtR(bullR)}</td>
+        <td>${fmtR(bearR)}</td>
+        <td>${fmtR(neutR)}</td>
+        <td>${verdict}</td>
+      </tr>`;
     }
+    weakHTML+='</tbody></table>';
   }
 
   // Section counts for display
   const _featureCount=sorted.length;
-  const _redundantCount=_redundantFeats.length;
+  const _redundantCount=allPairs.length;
+  const _weakCount=weakFeats.length;
 
   const hardFiltersHTML=buildHardFilterMethodologyHTML(E);
   mc.innerHTML=`
@@ -2934,6 +2977,7 @@ function _renderMethodologyInner(){
       <a href="#meth-engine" onclick="event.preventDefault();scrollToSection('meth-engine')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">⚙ Engine</a>
       <a href="#meth-weights" onclick="event.preventDefault();scrollToSection('meth-weights')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">📊 Weights (${_featureCount})</a>
       <a href="#meth-redundant" onclick="event.preventDefault();scrollToSection('meth-redundant')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">🔁 Redundant (${_redundantCount})</a>
+      <a href="#meth-weak" onclick="event.preventDefault();scrollToSection('meth-weak')" style="padding:4px 12px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);color:var(--t2);font-size:11px;font-weight:600;text-decoration:none;cursor:pointer">✂ Pruning (${_weakCount})</a>
     </nav>
     <div id="meth-hf-wrap">${hardFiltersHTML}</div>
     <div id="meth-regime">${regimeCardHTML}</div>
@@ -2951,9 +2995,12 @@ function _renderMethodologyInner(){
 
     <h3 id="meth-weights" style="margin-top:28px">Feature Weights <span style="font-size:12px;color:var(--t3);font-weight:400">(${_featureCount})</span></h3>
     <div class="corr-wrap">${wtHTML}</div>
-    <h3 id="meth-redundant" style="margin-top:28px">Redundant Features — Drop Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_redundantCount})</span></h3>
-    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Features whose mean |r| with all others exceeds mean+1σ — statistically outlier in redundancy. The weaker mRMR partner is the drop candidate. Safe to remove from your ALL NSE CSV.</p>
-    <div class="corr-wrap">${pairsHTML}</div>`;
+    <h3 id="meth-redundant" style="margin-top:28px">Redundant Features — Drop Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_redundantCount} pairs)</span></h3>
+    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Feature pairs with |r| ≥ 0.7 — the weaker mRMR partner is the drop candidate. Each feature listed once, attributed to its strongest correlated partner. Safe to remove from your ALL NSE CSV.</p>
+    <div class="corr-wrap">${pairsHTML}</div>
+    <h3 id="meth-weak" style="margin-top:28px">Weakest Contributors — Pruning Candidates <span style="font-size:12px;color:var(--t3);font-weight:400">(${_weakCount})</span></h3>
+    <p style="color:var(--t3);font-size:12px;margin-bottom:8px">Bottom 20% of features by mRMR score that are also weak (|target r| &lt; 0.05) in every regime with ≥2 sessions. These have shown no predictive signal across all market conditions — safe to prune.</p>
+    <div class="corr-wrap">${weakHTML}</div>`;
   setTimeout(()=>{_methTbls.hf?.render();_methTbls.sc?.render();},0);
 }
 
@@ -4608,6 +4655,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
