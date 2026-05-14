@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 14:11 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 14:18 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2804,6 +2804,14 @@ function buildSurvCorrHTML(){
 }
 
 function renderMethodology(){
+  try{ return _renderMethodologyInner(); }
+  catch(err){
+    console.error('renderMethodology error:',err);
+    const mc=document.getElementById('methContent');
+    if(mc) mc.innerHTML=`<div style="padding:20px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;color:var(--red);font-family:'DM Mono',monospace;font-size:12px"><strong>Methodology render error</strong><pre style="margin-top:10px;white-space:pre-wrap;font-size:11px;color:var(--t2)">${escHtml(err&&err.stack||String(err))}</pre></div>`;
+  }
+}
+function _renderMethodologyInner(){
   const E=ENGINE_DATA;
   if(!E||!E.features||!E.features.length||!E.mrmr||!E.weights||!E.targetCorr)return;
   // Guard all potentially missing fields
@@ -4340,7 +4348,7 @@ async function initApp(){
         COLS=getCols();
         // Restore REMOVED counts so filter pills show correctly on page load
         if(meth.removed&&typeof meth.removed==='object'){
-          REMOVED={uc:0,surv:0,survRules:{},liq:0,deliv:0,fade:0,...meth.removed};
+          REMOVED={uc:0,surv:0,nonEq:0,survRules:{},liq:0,fscore:0,atr:0,deliv:0,fade:0,rockets:{uc:[],surv:[],nonEq:[],liq:[],fscore:[],atr:[],deliv:[],fade:[]},...meth.removed};
           if(typeof REMOVED.survRules!=='object'||Array.isArray(REMOVED.survRules)) REMOVED.survRules={};
         }
         console.log('INIT: restored methodology data,',meth.features.length,'features');
@@ -4600,6 +4608,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
