@@ -334,7 +334,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 11:11 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 11:17 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1331,14 +1331,17 @@ function runEngine(raw, sessionTag){
     }
     return false;
   };
-  // learningSet: tradeable-universe filter — excludes data quality failures AND surveillance/non-EQ.
-  // Surveillance-flagged rockets follow a different mechanism (manipulation/thin-trade pumps); their
-  // feature patterns are not predictive of legitimate liquid-stock rockets, so we never learn from them.
-  // UC stocks stay in learning — UC at +19.5% is a real rocket, just not buyable at market price.
-  const learningSet=parsed.filter(d=>{
-    if(_dataQualityFail(d)) return false;
+  // learningSet: data-quality filter only. Surveillance/non-EQ/UC stay in learning because
+  // empirically (from the previously-profitable history) their features share predictive patterns
+  // with legitimate rockets. mRMR handles feature relevance via correlation; hard exclusion from
+  // learning would shrink the training sample without removing real contamination.
+  const learningSet=parsed.filter(d=>!_dataQualityFail(d));
+  // filtered (display): exclude UC (can't buy at market), surveillance-listed, and non-EQ series —
+  // these contribute to learning but can't be recommended.
+  const filtered=learningSet.filter(d=>{
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
+    if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
     if(NSE_NON_EQ.has(d.symbol)){REMOVED.surv++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.surv.push({sym,pc});return false;}
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
@@ -1347,13 +1350,6 @@ function runEngine(raw, sessionTag){
       if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
       return false;
     }
-    return true;
-  });
-  // filtered (display): additionally remove UC (can't buy at market)
-  const filtered=learningSet.filter(d=>{
-    const pc=K.price_change?d[K.price_change]:null;
-    const sym=d.symbol;
-    if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
     return true;
   });
 
@@ -4622,6 +4618,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
