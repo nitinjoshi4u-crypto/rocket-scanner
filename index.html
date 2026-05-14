@@ -333,7 +333,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 09:21 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 10:31 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -4171,13 +4171,16 @@ async function processFiles(files){
       window._lastParsedFiltered.forEach(d=>{
         stocks[d.symbol]=cols.map(f=>{const v=d[f];return(v===null||v===undefined)?null:+parseFloat(v).toFixed(2);});
       });
-      const today=new Date().toDateString();
+      const today=getSessionDate(); // YYYY-MM-DD — same format as load-side comparison
       try{
         // Before overwriting, check if existing snapshot is from a PREVIOUS day
         // If so, archive it as rs_snapshot_prev (yesterday's data for tomorrow's page refresh)
         const existingSnap=FS.get(SNAP_KEY);
         const updates={};
-        if(existingSnap&&existingSnap.stocks&&(!existingSnap.savedDate||existingSnap.savedDate!==today)){
+        // Migrate old "Thu May 14 2026" format if present — treat as not-today regardless
+        const existingDate=existingSnap?.savedDate;
+        const isLegacyFormat=existingDate && /^[A-Z][a-z]{2} /.test(existingDate);
+        if(existingSnap&&existingSnap.stocks&&(isLegacyFormat||!existingDate||existingDate!==today)){
           updates[SNAP_PREV_KEY]=existingSnap;
         }
         updates[SNAP_KEY]={cols,stocks,savedDate:today,regime:ENGINE_DATA?.regime||null,marketBreadth:ENGINE_DATA?.marketBreadth??null};
@@ -4267,16 +4270,28 @@ async function initApp(){
     // Load PREV_SNAP from brain — discard if more than 1 trading day old (stale lagged data)
     try{
       const todayISO=getSessionDate();
+      // Normalize legacy "Thu May 14 2026" format to "YYYY-MM-DD" so comparisons work
+      const normDate=(s)=>{
+        if(!s) return null;
+        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const d=new Date(s);
+        if(isNaN(d.getTime())) return null;
+        const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${dd}`;
+      };
       const snap=brain[SNAP_KEY], prev=brain[SNAP_PREV_KEY];
+      const snapDate=normDate(snap?.savedDate);
+      const prevDate=normDate(prev?.savedDate);
       let source=null;
-      if(snap&&snap.stocks&&snap.savedDate!==todayISO) source=snap;
+      // Only use snap as PREV_SNAP if it's from a strictly earlier date than today
+      if(snap&&snap.stocks&&snapDate&&snapDate!==todayISO) source=snap;
       if(!source&&prev&&prev.stocks) source=prev;
       if(source){
         // Staleness check: how many trading days between snapshot and today?
-        const snapDate=source.savedDate||null;
-        const gap=snapDate?tradingDaysBetween(snapDate,todayISO):null;
+        const sd=normDate(source.savedDate);
+        const gap=sd?tradingDaysBetween(sd,todayISO):null;
         if(gap!=null&&gap>1){
-          console.log('INIT: discarding stale snapshot from',snapDate,'('+gap+' trading days ago)');
+          console.log('INIT: discarding stale snapshot from',source.savedDate,'('+gap+' trading days ago)');
           source=null;
         }
       }
@@ -4582,6 +4597,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
