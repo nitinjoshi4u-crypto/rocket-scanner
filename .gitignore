@@ -1,5 +1,4 @@
-# Only index.html and Rocket_Brain.json are tracked
+# Only index.html is tracked
 *
 !.gitignore
 !index.html
-!Rocket_Brain.json
