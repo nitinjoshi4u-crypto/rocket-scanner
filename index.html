@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 14:51 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 14:58 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1884,9 +1884,7 @@ function renderStats(){
      :ENGINE_DATA.regime==='bear'  ?'<span style="color:var(--red)">🐻 Bear</span>'
      :'<span style="color:var(--orange)">➡ Neutral</span>'
     }</div><div class="st-d">${ENGINE_DATA.marketBreadth!=null?(ENGINE_DATA.marketBreadth*100).toFixed(0):(bull/t*100).toFixed(0)}% breadth · ${
-      ENGINE_DATA.regimeSessions
-        ? (ENGINE_DATA.regimeSessions.bull||0)+'🐂 '+(ENGINE_DATA.regimeSessions.bear||0)+'🐻 '+(ENGINE_DATA.regimeSessions.neutral||0)+'➡'
-        : '0🐂 0🐻 0➡'
+      (()=>{const b=(ACC_CORR_BULL?.sessions||ENGINE_DATA.regimeSessions?.bull||0),be=(ACC_CORR_BEAR?.sessions||ENGINE_DATA.regimeSessions?.bear||0),n=(ACC_CORR_NEUT?.sessions||ENGINE_DATA.regimeSessions?.neutral||0);return b+' 🐂 '+be+' 🐻 '+n+' ➡';})()
     } sessions</div></div>${bookedCard}`;
 
   // Row 1: hard-filter removal pills
@@ -4656,6 +4654,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
