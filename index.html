@@ -308,6 +308,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
    </div></div>
 
    <div class="fg"><span class="fg-lbl">Min 1D %</span><input type="number" id="fMin1D" placeholder="e.g. 2" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Rocket %</span><input type="number" id="fRocketPct" value="10" placeholder="10" min="5" max="20" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="onRocketPctChangeUI()" title="Threshold for what counts as a rocket. Used for learning labels, the display ceiling, and the buy zone check. Default 10%. Lower it (e.g. 7) if you've excluded too many stocks and need more rocket samples to learn from."></div>
    <div class="fg"><span class="fg-lbl">Min Vol <span id="volAutoLabel" style="font-size:9px;color:var(--cyan)"></span></span><input type="number" id="fVol" placeholder="auto" min="0" style="width:110px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'" oninput="onVolChange()"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Vol ×</span><input type="number" id="fVolMult" placeholder="auto" min="10" max="99999" step="10" style="width:65px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="VOL_AUTO=true;setAutoVolume();applyFilters()" title="Volume multiplier: minutes since open × this = Min Vol floor"></div>
    <div class="fg"><span class="fg-lbl" style="font-size:8px">Min TV ₹</span><input type="number" id="fMinTurnover" placeholder="e.g. 1000000" min="0" step="500000" style="width:90px;padding:8px 6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none" oninput="applyFilters()" title="Min turnover (Price × Volume) in ₹. Blank = no filter. Recommended: 1000000 (₹10L) to ensure tradeable liquidity regardless of price."></div>
@@ -333,7 +334,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 10:31 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 11:11 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -801,6 +802,17 @@ function onVolChange(){
 // ── Rocket ceiling = resolvedThreshold − adaptiveTGT.
 // Retained as no-op for call sites in engine post-run, loadFilterState, clearFilters.
 function onRocketPctChange(resolvedThreshold){}
+
+// User-facing: rocket threshold changed via filter bar input.
+// Updates display ceiling immediately. Learning impact only takes effect on next CSV upload.
+function onRocketPctChangeUI(){
+  const el=document.getElementById('fRocketPct');
+  const raw=parseFloat(el?.value);
+  const v=(isFinite(raw)&&raw>=5&&raw<=20)?raw:10;
+  if(ENGINE_DATA) ENGINE_DATA.rocketThreshold=v;
+  try{saveFilterState();}catch(e){}
+  applyFilters();
+}
 
 // ── CSV Parser ──
 function parseCSVRaw(text){
@@ -1319,13 +1331,14 @@ function runEngine(raw, sessionTag){
     }
     return false;
   };
-  // learningSet: all stocks with valid data quality (UC and surv included — their features are real)
-  const learningSet=parsed.filter(d=>!_dataQualityFail(d));
-  // filtered (display): additionally remove UC and surveillance
-  const filtered=learningSet.filter(d=>{
+  // learningSet: tradeable-universe filter — excludes data quality failures AND surveillance/non-EQ.
+  // Surveillance-flagged rockets follow a different mechanism (manipulation/thin-trade pumps); their
+  // feature patterns are not predictive of legitimate liquid-stock rockets, so we never learn from them.
+  // UC stocks stay in learning — UC at +19.5% is a real rocket, just not buyable at market price.
+  const learningSet=parsed.filter(d=>{
+    if(_dataQualityFail(d)) return false;
     const pc=K.price_change?d[K.price_change]:null;
     const sym=d.symbol;
-    if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
     if(NSE_NON_EQ.has(d.symbol)){REMOVED.surv++;if(pc!=null&&pc>=rocketPct)REMOVED.rockets.surv.push({sym,pc});return false;}
     if(NSE_SURV[d.symbol]&&NSE_SURV[d.symbol].length){
       REMOVED.surv++;
@@ -1334,6 +1347,13 @@ function runEngine(raw, sessionTag){
       if(pc!=null&&pc>=rocketPct) REMOVED.rockets.surv.push({sym,pc});
       return false;
     }
+    return true;
+  });
+  // filtered (display): additionally remove UC (can't buy at market)
+  const filtered=learningSet.filter(d=>{
+    const pc=K.price_change?d[K.price_change]:null;
+    const sym=d.symbol;
+    if(pc!==null&&pc>=19.5){REMOVED.uc++;if(pc>=rocketPct)REMOVED.rockets.uc.push({sym,pc});return false;}
     return true;
   });
 
@@ -1354,8 +1374,10 @@ function runEngine(raw, sessionTag){
     valid.forEach((x,ri)=>{r[x.i]=ri/(valid.length-1||1);});
     return r;
   }
-  // ── Rocket threshold: hardcoded at 10% absolute ──
-  const ROCKET_THRESHOLD=10;
+  // ── Rocket threshold: configurable via fRocketPct filter input, default 10% ──
+  const _rPctEl=document.getElementById('fRocketPct');
+  const _rPctRaw=parseFloat(_rPctEl?.value);
+  const ROCKET_THRESHOLD=(isFinite(_rPctRaw)&&_rPctRaw>=5&&_rPctRaw<=20)?_rPctRaw:10;
   rocketPct=ROCKET_THRESHOLD;
   const topSetToday=new Set();
   const labelMap=new Map(); // learningSet index → soft rocket label: (change%-threshold)/threshold
@@ -3475,6 +3497,7 @@ function clearFilters(){
   ['fMinScore','fMin1D','fCapital','fMaxAlloc','fPriceMin','fPriceMax','fMinTurnover'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
+  const rocketEl=document.getElementById('fRocketPct');if(rocketEl)rocketEl.value='10';
   const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='77';
   VOL_AUTO=true;setAutoVolume();
   applyFilters();
@@ -4477,6 +4500,7 @@ function saveFilterState(){
     maxAlloc:document.getElementById('fMaxAlloc')?.value||'',
     reDrop:document.getElementById('fReDrop')?.value||'1',
     topupAlloc:document.getElementById('fTopupAlloc')?.value||'50',
+    rocketPct:document.getElementById('fRocketPct')?.value||'10',
     sortCol:SCOL,
     sortDir:SDIR,
   };
@@ -4494,6 +4518,7 @@ function loadFilterState(){
     if(state.maxAlloc){const el=document.getElementById('fMaxAlloc');if(el)el.value=state.maxAlloc;}
     if(state.reDrop!=null){const el=document.getElementById('fReDrop');if(el)el.value=state.reDrop;}
     if(state.topupAlloc!=null){const el=document.getElementById('fTopupAlloc');if(el)el.value=state.topupAlloc;}
+    if(state.rocketPct!=null){const el=document.getElementById('fRocketPct');if(el)el.value=state.rocketPct;}
     if(state.volMult){const el=document.getElementById('fVolMult');if(el)el.value=state.volMult;}
     if(state.minTurnover){const el=document.getElementById('fMinTurnover');if(el)el.value=state.minTurnover;}
     if(state.fvol){
@@ -4597,6 +4622,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
