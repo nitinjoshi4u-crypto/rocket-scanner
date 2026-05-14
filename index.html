@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 11:31 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 11:41 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1032,20 +1032,25 @@ function parseSurv(text){
   const symCol=findHeader(hdrs,[/^symbol$/i,/^nse.?symbol$/i,/^trading.?symbol$/i,/^scrip.?symbol$/i])||null;
   const seriesCol=findHeader(hdrs,[/^series$/i])||null;
   // dataHdrs: every column from the actual REG1 file that is a surveillance flag
-  // Excludes identity/metadata columns and filler columns — no hardcoded rule list needed
+  // Excludes identity/metadata columns and filler columns
   const _survNonFlag=new Set(['scripcode','symbol','nse exclusive','status','series']);
   const dataHdrs=hdrs.filter(h=>{const hl=h.trim().toLowerCase();return !_survNonFlag.has(hl)&&!/^filler/i.test(h.trim());});
-  // Build active rules from actual file columns — always up to date regardless of column name changes
+  // SURV_FILE_RULES: every column in the REG1 file — used by the "add rule" datalist so the
+  // user can browse all available rules even though only configured ones flag stocks
   const fileRuleKeys=new Set();
-  const activeRules=dataHdrs.map(h=>({key:survRuleKey(h),column:h,label:h,header:h,manual:false}))
+  SURV_FILE_RULES=dataHdrs.map(h=>({key:survRuleKey(h),column:h,label:h}))
     .filter(r=>{if(fileRuleKeys.has(r.key))return false;fileRuleKeys.add(r.key);return true;});
-  // Publish file-derived rules to SURV_FILE_RULES so getSurvRules() and all consumers use actual file columns
-  SURV_FILE_RULES=activeRules.map(r=>({key:r.key,column:r.column,label:r.label}));
-  // Update column names for any user rules that were renamed in the REG1 file (case/spacing only)
+  // Update column names for any user rules renamed in the REG1 file (case/spacing only)
   SURV_CUSTOM_RULES.forEach(r=>{
-    if(fileRuleKeys.has(r.key)) return;
     const matchedHdr=dataHdrs.find(h=>survRuleKey(h)===r.key);
-    if(matchedHdr){r.column=matchedHdr;r.label=matchedHdr;fileRuleKeys.add(r.key);}
+    if(matchedHdr){r.column=matchedHdr;r.label=matchedHdr;}
+  });
+  // activeRules: ONLY the user's configured surveillance rules (SURV_CUSTOM_RULES).
+  // Rules in the REG1 file but NOT in the user's table do not flag stocks. The badge,
+  // REMOVED.survRules counts, and methodology rule counts all derive from this.
+  const activeRules=SURV_CUSTOM_RULES.map(r=>{
+    const matchedHdr=dataHdrs.find(h=>survRuleKey(h)===r.key);
+    return {key:r.key, column:r.column, label:r.label, header:matchedHdr||null};
   });
   activeRules.forEach(rule=>{SURV_RULE_HITS[rule.key]=0;});
   rows.forEach(r=>{
@@ -4622,6 +4627,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
