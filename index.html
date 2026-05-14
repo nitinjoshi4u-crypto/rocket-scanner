@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 14:48 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-14 14:51 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2826,6 +2826,7 @@ function _renderMethodologyInner(){
   const COMPUTED_FEATS=new Set(['sector_breadth','sector_rel_strength','industry_breadth','peak_retention']);
   const regimeIcon = E.regime==='bull'?'🐂':E.regime==='bear'?'🐻':'➡';
   const regimeColor = E.regime==='bull'?'var(--green)':E.regime==='bear'?'var(--red)':'var(--orange)';
+  const rs = E.regimeSessions||{bull:0,bear:0,neutral:0};
   const corrSource = E.useRegimeCorr?'Regime-specific correlations active':(E.useAccCorr?'Combined fallback (regime <2 sessions)':'Warming up (need ≥2 sessions)');
   const regimeTotal = (rs.bull||0)+(rs.bear||0)+(rs.neutral||0);
   const sessLabel = `${regimeTotal} sessions · ${E.laggedNote||'lagged learning starts next upload'}`;
@@ -4655,6 +4656,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
