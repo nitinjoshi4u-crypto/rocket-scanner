@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 11:02 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 12:05 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1276,8 +1276,14 @@ function runEngine(raw, sessionTag){
                : 'neutral';
   CURRENT_REGIME = regime;
   const totalParsed = parsed.length;
-  const _dayChgVals = K.price_change ? parsed.map(d=>d[K.price_change]).filter(v=>v!=null&&isFinite(v)) : [];
-  const todayAvgDayChg = _dayChgVals.length ? _dayChgVals.reduce((s,v)=>s+v,0)/_dayChgVals.length : null;
+  // Avg day-high % from previous close (how far each stock ran at its intraday best)
+  const _dayHighVals = (K.high_1d && K.price_change) ? parsed.map(d=>{
+    const pc=d[K.price_change]; const hi=d[K.high_1d]; const pr=d[K.price];
+    if(pc==null||hi==null||pr==null||!isFinite(pc)||!isFinite(hi)||!isFinite(pr)||pr<=0) return null;
+    const prevClose=pr/(1+pc/100);
+    return prevClose>0?(hi/prevClose-1)*100:null;
+  }).filter(v=>v!=null&&isFinite(v)) : [];
+  const todayAvgDayChg=_dayHighVals.length ? _dayHighVals.reduce((s,v)=>s+v,0)/_dayHighVals.length : null;
 
   // ── Compute Sector / Industry breadth features (full universe) ──
   if(sectorCol && K.price_change){
@@ -1499,11 +1505,14 @@ function runEngine(raw, sessionTag){
   else                     ACC_CORR_NEUT=newRegimeAcc;
   FS.set(regimeStoreMap[regime], newRegimeAcc);
 
-  // Update avg daily change running mean (two numbers, flat brain size forever)
-  if(isNewSession && todayAvgDayChg != null){
-    const _adc=FS.get(AVG_DAY_CHG_STORE)||{mean:0,sessions:0};
-    const _adcN=_adc.sessions+1;
-    FS.set(AVG_DAY_CHG_STORE,{mean:+(_adc.mean+(todayAvgDayChg-_adc.mean)/_adcN).toFixed(4),sessions:_adcN});
+  // Update avg day-high running mean — once per calendar day only, regardless of upload count
+  if(todayAvgDayChg != null && isMarketHours()){
+    const _adc=FS.get(AVG_DAY_CHG_STORE)||{mean:0,sessions:0,lastDate:''};
+    const _today=getSessionDate();
+    if(_adc.lastDate !== _today){
+      const _adcN=_adc.sessions+1;
+      FS.set(AVG_DAY_CHG_STORE,{mean:+(_adc.mean+(todayAvgDayChg-_adc.mean)/_adcN).toFixed(4),sessions:_adcN,lastDate:_today});
+    }
   }
 
   // Save combined accumulator (legacy fallback for regimes with <2 sessions)
@@ -1882,8 +1891,8 @@ function renderStats(){
     ${(()=>{
       const _adc=FS.get(AVG_DAY_CHG_STORE);
       const _todayChg=ENGINE_DATA.avgDayChg;
-      const _histStr=_adc&&_adc.sessions>=2?` · hist avg <span style="color:${_adc.mean>=0?'var(--green)':'var(--red)'}">${_adc.mean>=0?'+':''}${_adc.mean.toFixed(2)}%</span> <span style="color:var(--t3);font-size:10px">(${_adc.sessions}d)</span>`:'';
-      const _todayStr=_todayChg!=null?` · today <span style="color:${_todayChg>=0?'var(--green)':'var(--red)'}">${_todayChg>=0?'+':''}${_todayChg.toFixed(2)}%</span>`:'';
+      const _histStr=_adc&&_adc.sessions>=2?` · hist high <span style="color:${_adc.mean>=0?'var(--green)':'var(--red)'}" title="Avg universe day-high % from prev close — running mean, one observation per trading day (${_adc.sessions} days)">${_adc.mean>=0?'+':''}${_adc.mean.toFixed(2)}%</span> <span style="color:var(--t3);font-size:10px">(${_adc.sessions}d)</span>`:'';
+      const _todayStr=_todayChg!=null?` · today high <span style="color:${_todayChg>=0?'var(--green)':'var(--red)'}" title="Avg day-high % from prev close across all stocks today">${_todayChg>=0?'+':''}${_todayChg.toFixed(2)}%</span>`:'';
       return `<div class="st"><div class="st-l">Universe</div><div class="st-v">${t.toLocaleString()}</div><div class="st-d">of ${totalParsed.toLocaleString()} · <span style="color:var(--green)">${bull} ▲</span> · <span style="color:var(--red)">${t-bull} ▼</span>${_todayStr}${_histStr}</div></div>`;
     })()}
     ${slTgtCard}
@@ -4618,6 +4627,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
