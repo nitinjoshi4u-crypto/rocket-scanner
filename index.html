@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-14 15:11 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 08:50 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -2938,7 +2938,7 @@ function getCols(){
   const fixed=[
     {key:'chk',label:'',s:0},
     {key:'rocketScore',label:'Score',s:1},{key:'symbol',label:'Symbol',s:1},
-    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'delivPct',label:'Deliv%',s:1},
+    {key:'price',label:'Price ₹',s:1},{key:'priceChange',label:'Chg%',s:1},{key:'maxEntry',label:'Max Entry',s:0},{key:'delivPct',label:'Deliv%',s:1},
     {key:'alloc',label:'Alloc ₹',s:0},{key:'volume',label:'Volume',s:1},
   ];
   // Dynamic columns from mRMR features — skip any that are all null across displayed stocks
@@ -3002,6 +3002,19 @@ function getBuyPrice(s){
   const vwap=s.vwap;
   const atrMargin=(s.atr!=null&&ltp>0)?(ltp*s.atr*0.25/100):0;
   return vwap>0?parseFloat(tickPrice(vwap+atrMargin).toFixed(2)):parseFloat(tickPrice(ltp).toFixed(2));
+}
+function getMaxEntry(s){
+  const pc=s.priceChange;
+  if(!s.price||pc==null||!isFinite(pc)) return null;
+  const tgt=getEffectiveTgtPct()||3.7;
+  const ceiling=ENGINE_DATA?.rocketThreshold||10;
+  const openPrice=s.price/(1+pc/100);
+  return tickPrice(openPrice*(1+ceiling/100)/(1+tgt/100));
+}
+function isBuyZone(s){
+  const maxEntry=getMaxEntry(s);
+  if(maxEntry===null) return false;
+  return s.price<=maxEntry+0.01;
 }
 // ── Effective learnt TGT% (gross sell-price delta from buy) ──
 // Source of truth = TRADEBOOK_STATS.adaptiveTGT (75th percentile win from FIFO matching).
@@ -3222,6 +3235,7 @@ function renderTable(){
       <td style="font-family:'Plus Jakarta Sans',sans-serif"><div style="font-weight:700;font-size:13px;color:var(--t1)">${s.symbol}${(()=>{const sv=s.seen||0;if(!sv) return '';return`<sub style="font-size:11px;color:var(--amber);font-weight:700;margin-left:3px;font-family:'DM Mono',monospace" title="Seen ${sv}× today">${sv}×</sub>`;})()}${s._isTopUp?`<span style="font-size:8px;background:rgba(251,146,60,.15);color:var(--fire);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">↑ TOP-UP</span>`:''}${(()=>{if(!s.isSurv) return '';const labels=(s.survRules||[]).map(k=>{const r=SURV_CUSTOM_RULES.find(x=>x.key===k);return r?r.label:k;}).join(' · ');return `<span style="font-size:8px;background:rgba(239,68,68,.15);color:var(--red);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle" title="NSE Surveillance: ${escHtml(labels)}">⚠ SURV</span>`;})()}</div><div style="font-size:9px;color:var(--t3);max-width:160px;overflow:hidden;text-overflow:ellipsis">${s.name}${s._isTopUp&&s._heldAvg?` · avg ₹${s._heldAvg.toLocaleString('en-IN',{maximumFractionDigits:2})}`:''}</div></td>
       <td>₹${fmt(s.price)}</td>
       <td>${fPerf(s.priceChange)}</td>
+      <td>${(()=>{const hi=getMaxEntry(s);if(hi===null)return'<span style="color:var(--t3)">—</span>';const tgt=getEffectiveTgtPct()||3.7;const ceiling=ENGINE_DATA?.rocketThreshold||10;const inZone=isBuyZone(s);return`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${inZone?'var(--green)':'var(--red)'}" title="Max entry: buying ≤₹${hi.toFixed(2)} still leaves full TGT% (${tgt.toFixed(2)}%) before the ${ceiling}% ceiling">₹${hi.toFixed(2)}</span>`;})()}</td>
       <td>${fDel(s.delivPct)}</td>
       <td class="alloc-cell" data-sym="${s.symbol}">${(()=>{
         if(!am) return '<span style="color:var(--t3);font-size:11px">—</span>';
@@ -4578,6 +4592,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
