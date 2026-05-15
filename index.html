@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 08:50 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 08:53 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3320,6 +3320,7 @@ function applyFilters(){
     if(fMax1D<Infinity){if(x.priceChange===null||x.priceChange>fMax1D)return false;}
     if(fPriceMin>0&&(x.price||0)<fPriceMin)return false;
     if(fPriceMax>0&&(x.price||0)>fPriceMax)return false;
+    if(!isBuyZone(x)) return false;
     return true;
   });
 
@@ -4592,6 +4593,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
