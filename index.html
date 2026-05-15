@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 10:54 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 11:02 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1873,8 +1873,8 @@ function renderStats(){
     const rr=(parseFloat(_sl)>0?(parseFloat(_tgt)/parseFloat(_sl)):0).toFixed(2);
     const nudge=getMissedOppNudge();
     const nudgeStr=nudge>0?` · <span style="color:var(--amber);font-size:10px" title="You leave an avg of ${(nudge/0.25).toFixed(2)}% on the table after sells — informative only, not applied to TGT">missed opp +${nudge.toFixed(2)}%</span>`:'';
-    const _cp=TRADEBOOK_STATS.avgChargePct;
-    const costStr=_cp!=null?` · <span style="color:var(--t2)" title="Avg total Zerodha charges as % of round-trip turnover (buy+sell value), across all tradebook trips">cost ~${_cp.toFixed(2)}%</span>`:'';
+    const _cp=TRADEBOOK_STATS.avgChargePct!=null?Math.abs(TRADEBOOK_STATS.avgChargePct):null;
+    const costStr=(_cp!=null&&_cp>0)?` · <span style="color:var(--t2)" title="Avg total Zerodha charges as % of round-trip turnover (buy+sell value), across all tradebook trips">cost ~${_cp.toFixed(2)}%</span>`:'';
     return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr}${costStr} · tradebook-derived${nudgeStr}</div></div>`;
   })();
 
@@ -3920,7 +3920,7 @@ function parseTradebook(text){
   // Avg charge as % of turnover (buy+sell value) across all valid round trips
   const _ctTrips=tripsData.filter(r=>r.buyPrice>0&&r.sellPrice>0&&r.qty>0&&r.charges>=0);
   stats.avgChargePct=_ctTrips.length
-    ? +(_ctTrips.reduce((s,r)=>s+r.charges/((r.buyPrice+r.sellPrice)*r.qty)*100,0)/_ctTrips.length).toFixed(3)
+    ? +Math.max(0,_ctTrips.reduce((s,r)=>s+r.charges/((r.buyPrice+r.sellPrice)*r.qty)*100,0)/_ctTrips.length).toFixed(3)
     : null;
 
   const bookedByDate={};
@@ -4618,6 +4618,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
