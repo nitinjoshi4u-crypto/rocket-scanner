@@ -1,6 +1,5 @@
-# Only index.html, rocket_brain.json, and .nojekyll are tracked
+# Only index.html and Rocket_Brain.json are tracked
 *
 !.gitignore
-!.nojekyll
 !index.html
 !rocket_brain.json
