@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 09:13 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 09:37 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -4003,7 +4003,7 @@ function exportBasket(){
         quantity:qty,price:parseFloat(tickPrice(buyPrice).toFixed(2)),
         triggerPrice:0,disclosedQuantity:0,lastPrice:0,
         variety:'regular',
-        gtt:{target:adaptiveTGT},
+        gtt:{target:adaptiveTGT,stoploss:adaptiveSL},
         tags:[]
       }
     });
@@ -4593,6 +4593,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
