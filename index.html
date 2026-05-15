@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 10:50 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 10:54 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1659,7 +1659,7 @@ function runEngine(raw, sessionTag){
   try{
     const methSave={targetCorr,targetCorrToday,interCorr,mrmr,weights,features:FEATS,labels:LABELS,top10Feats,rocketCount:ENGINE_DATA.rocketCount,rocketThreshold:ENGINE_DATA.rocketThreshold,accSessions:ENGINE_DATA.accSessions,laggedNote:ENGINE_DATA.laggedNote,
       regime:ENGINE_DATA.regime,marketBreadth:ENGINE_DATA.marketBreadth,useAccCorr:ENGINE_DATA.useAccCorr,useRegimeCorr:ENGINE_DATA.useRegimeCorr,regimeSessions:ENGINE_DATA.regimeSessions,sectorCol:ENGINE_DATA.sectorCol,industryCol:ENGINE_DATA.industryCol,
-      yesterdayRockets:yesterdayRockets,goodFromYesterday:goodFromYesterday,badFromYesterday:badFromYesterday,qualityTargetN:qualityN,totalParsed:totalParsed,removed:{...REMOVED},survSize:Object.keys(NSE_SURV).length};
+      yesterdayRockets:yesterdayRockets,goodFromYesterday:goodFromYesterday,badFromYesterday:badFromYesterday,qualityTargetN:qualityN,totalParsed:totalParsed,removed:{...REMOVED},survSize:Object.keys(NSE_SURV).length,avgDayChg:todayAvgDayChg};
     FS.set(METH_STORE,methSave);
     // Update regime calendar: date → regime
     const regCal=FS.get(REGIME_CAL_STORE)||{};
@@ -4618,6 +4618,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
