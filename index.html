@@ -300,7 +300,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
  <div class="tp act" id="tab0">
   <button class="ctrls-toggle" id="ctrlsToggle" onclick="toggleFilters()">⚙ Filters <span id="ctrlsArrow">▼</span></button>
   <div class="ctrls" id="ctrlsPanel">
-   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Min Score</span><input type="number" id="fMinScore" value="77" placeholder="77" min="77" max="100" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
+   <div class="fg"><span class="fg-lbl" style="color:var(--orange)">Min Score</span><input type="number" id="fMinScore" value="70" placeholder="70" min="70" max="100" step="0.5" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()"></div>
    <div class="fg"><span class="fg-lbl">Price ₹</span><div style="display:flex;gap:5px;align-items:center">
    <input type="number" id="fPriceMin" placeholder="Min" min="0" style="width:72px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border .2s" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'" oninput="applyFilters()">
    <span style="color:var(--t3);font-size:11px">–</span>
@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 08:53 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 09:13 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -3467,7 +3467,7 @@ function clearFilters(){
   const reDropEl=document.getElementById('fReDrop');if(reDropEl)reDropEl.value='1';
   const topupEl=document.getElementById('fTopupAlloc');if(topupEl)topupEl.value='50';
   const rocketEl=document.getElementById('fRocketPct');if(rocketEl)rocketEl.value='10';
-  const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='77';
+  const minScoreEl=document.getElementById('fMinScore');if(minScoreEl)minScoreEl.value='70';
   VOL_AUTO=true;setAutoVolume();
   applyFilters();
   localStorage.removeItem(SCANNER_STORE);
@@ -4458,7 +4458,7 @@ initApp();
 
 function saveFilterState(){
   const state={
-    minScore:document.getElementById('fMinScore')?.value||'77',
+    minScore:document.getElementById('fMinScore')?.value||'70',
     priceMin:document.getElementById('fPriceMin')?.value||'',
     priceMax:document.getElementById('fPriceMax')?.value||'',
     fvol:VOL_AUTO?'':document.getElementById('fVol')?.value||'',
@@ -4593,6 +4593,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
