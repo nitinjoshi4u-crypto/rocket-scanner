@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 13:10 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 13:16 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -988,8 +988,6 @@ function persistMethodologySnapshot(){
       sectorCol:ENGINE_DATA.sectorCol,
       industryCol:ENGINE_DATA.industryCol,
       yesterdayRockets:ENGINE_DATA.yesterdayRockets||[],
-      goodFromYesterday:ENGINE_DATA.goodFromYesterday||0,
-      badFromYesterday:ENGINE_DATA.badFromYesterday||0,
       qualityTargetN:ENGINE_DATA.qualityTargetN||0,
       totalParsed:ENGINE_DATA.totalParsed||0,
       removed:{...(ENGINE_DATA.removed||{})},
@@ -1329,7 +1327,7 @@ function runEngine(raw, sessionTag){
   }
 
   // ── Configurable thresholds (read early so hard filters can use rocketPct) ──
-  let rocketPct=10, holdFactor=0.3;
+  let rocketPct=10;
   const _rPctEl=document.getElementById('fRocketPct');
   const _rPctRaw=parseFloat(_rPctEl?.value);
   const ROCKET_THRESHOLD=(isFinite(_rPctRaw)&&_rPctRaw>=5&&_rPctRaw<=20)?_rPctRaw:10;
@@ -1406,13 +1404,10 @@ function runEngine(raw, sessionTag){
   });
 
 
-  // ── Quality-adjusted target: union of today's rockets + yesterday's held rockets ──
-  // Yesterday's rockets that held → label = 1 (durability signal — reinforce)
-  // Yesterday's rockets that collapsed → label = 0 (unlearn fragile spike patterns)
+  // ── Yesterday's rockets — tracked only to suppress them from display ──
   const prevSnap=PREV_SNAP||{};
   const pcKey=K.price_change;
   const yesterdayRockets=[];
-  const goodRocketsToday=new Set();
   const filteredSymMap={}; filtered.forEach((d,i)=>{filteredSymMap[d.symbol]=i;});
 
   if(pcKey){
@@ -1422,16 +1417,7 @@ function runEngine(raw, sessionTag){
       const idx=filteredSymMap[sym];
       const todayData=idx!=null?filtered[idx]:null;
       const todayChg=todayData&&pcKey?todayData[pcKey]:null;
-      const collapseThreshold=-(yesterdayChg*holdFactor);
-      const held=todayChg!=null&&todayChg>collapseThreshold;
-      yesterdayRockets.push({
-        symbol:sym,
-        yesterdayChg:+yesterdayChg.toFixed(2),
-        todayChg:todayChg!=null?+todayChg.toFixed(2):null,
-        collapseThreshold:+collapseThreshold.toFixed(2),
-        held,inToday:idx!=null
-      });
-      if(held&&idx!=null) goodRocketsToday.add(idx);
+      yesterdayRockets.push({symbol:sym,yesterdayChg:+yesterdayChg.toFixed(2),todayChg:todayChg!=null?+todayChg.toFixed(2):null});
     });
   }
   yesterdayRockets.sort((a,b)=>b.yesterdayChg-a.yesterdayChg);
@@ -1441,8 +1427,6 @@ function runEngine(raw, sessionTag){
   // the lagged correlation with a continuation signal we don't want to predict.
   const qualitySet=new Set([...topSetToday]);
   const topN=topSetToday.size;
-  const goodFromYesterday=goodRocketsToday.size; // informational only — not in learning
-  const badFromYesterday=yesterdayRockets.filter(r=>!r.held).length;
   const qualityN=qualitySet.size;
 
   // ── Lagged correlation: yesterday's features → quality target (binary 0/1) ──
@@ -1453,12 +1437,12 @@ function runEngine(raw, sessionTag){
   let laggedNote='';
 
   if(qualityN===0){
-    laggedNote='No rockets today (0 stocks ≥'+ROCKET_THRESHOLD+'%), 0 verified from yesterday — using historical only';
+    laggedNote='No rockets today (0 stocks ≥'+ROCKET_THRESHOLD+'%) — using historical only';
     for(const f of FEATS) targetCorrToday[f]=null;
   } else if(useLagged){
     const overlapIndices=overlap.map(d=>filtered.indexOf(d));
     const laggedTarget=overlapIndices.map(i=>qualitySet.has(i)?1:0);
-    laggedNote='Lagged ('+overlap.length+' matched · '+topN+' new rockets · +'+goodFromYesterday+' verified · −'+badFromYesterday+' collapsed · '+qualityN+' quality target)';
+    laggedNote='Lagged ('+overlap.length+' matched · '+topN+' rockets · '+qualityN+' quality target)';
     for(const f of FEATS){
       const prevVals=overlap.map(d=>{
         const v=prevSnap[d.symbol][f];
@@ -1653,8 +1637,6 @@ function runEngine(raw, sessionTag){
     },
     sectorCol: sectorCol?true:false, industryCol: industryCol?true:false,
     yesterdayRockets: yesterdayRockets,
-    goodFromYesterday: goodFromYesterday,
-    badFromYesterday: badFromYesterday,
     qualityTargetN: qualityN,
     totalParsed: totalParsed,
     removed: {...REMOVED},
@@ -1671,7 +1653,7 @@ function runEngine(raw, sessionTag){
   try{
     const methSave={targetCorr,targetCorrToday,interCorr,mrmr,weights,features:FEATS,labels:LABELS,top10Feats,rocketCount:ENGINE_DATA.rocketCount,rocketThreshold:ENGINE_DATA.rocketThreshold,accSessions:ENGINE_DATA.accSessions,laggedNote:ENGINE_DATA.laggedNote,
       regime:ENGINE_DATA.regime,marketBreadth:ENGINE_DATA.marketBreadth,useAccCorr:ENGINE_DATA.useAccCorr,useRegimeCorr:ENGINE_DATA.useRegimeCorr,regimeSessions:ENGINE_DATA.regimeSessions,sectorCol:ENGINE_DATA.sectorCol,industryCol:ENGINE_DATA.industryCol,
-      yesterdayRockets:yesterdayRockets,goodFromYesterday:goodFromYesterday,badFromYesterday:badFromYesterday,qualityTargetN:qualityN,totalParsed:totalParsed,removed:{...REMOVED},survSize:Object.keys(NSE_SURV).length,avgDayChg:todayAvgDayChg};
+      yesterdayRockets:yesterdayRockets,qualityTargetN:qualityN,totalParsed:totalParsed,removed:{...REMOVED},survSize:Object.keys(NSE_SURV).length,avgDayChg:todayAvgDayChg};
     FS.set(METH_STORE,methSave);
     // Update regime calendar: date → regime
     const regCal=FS.get(REGIME_CAL_STORE)||{};
@@ -1901,7 +1883,7 @@ function renderStats(){
     ${slTgtCard}
     <div class="st"><div class="st-l">Score Spread</div><div class="st-v">${scoreSpread}</div><div class="st-d">${scoreMax} top · ${scoreMin} low</div></div>
     <div class="st"><div class="st-l">Top Sector</div><div class="st-v" style="font-size:15px;color:var(--green)">${topSec}</div><div class="st-d">${topSecPct.toFixed(0)}% advancing</div></div>
-    <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${_rsCeiling}%${ENGINE_DATA?.goodFromYesterday?` · <span style="color:var(--green)">+${ENGINE_DATA.goodFromYesterday} held</span>`:''} ${ENGINE_DATA?.badFromYesterday?` · <span style="color:var(--red)">${ENGINE_DATA.badFromYesterday} collapsed</span>`:''}</div></div>
+    <div class="st"><div class="st-l">Rockets Today</div><div class="st-v" style="color:${rocketCount>0?'var(--fire)':'var(--t3)'}">${rocketCount}</div><div class="st-d">≥${_rsCeiling}%</div></div>
     <div class="st"><div class="st-l">Regime</div><div class="st-v">${
       ENGINE_DATA.regime==='bull'  ?'<span style="color:var(--green)">🐂 Bull</span>'
      :ENGINE_DATA.regime==='bear'  ?'<span style="color:var(--red)">🐻 Bear</span>'
@@ -4644,6 +4626,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
