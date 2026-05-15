@@ -335,7 +335,7 @@ table.main tbody td{padding:9px 11px;font-family:'DM Mono',monospace;font-size:1
 
 
 <script>
-const BUILD_TS='2026-05-15 09:45 IST'; // replaced at commit time with IST datetime
+const BUILD_TS='2026-05-15 10:12 IST'; // replaced at commit time with IST datetime
 let ALL=[],FILT=[],PG=1,PGSZ=9999,SCOL='rocketScore',SDIR=-1;
 let _tvLoadedThisSession=false; // true once a TV CSV has been processed this session
 let _scanSavedDate=null; // date string (YYYY-MM-DD) of the brain-restored scan, set on init
@@ -1861,7 +1861,9 @@ function renderStats(){
     const _sl=TRADEBOOK_STATS.adaptiveSL.toFixed(2);
     const _tgt=(getEffectiveTgtPct()||TRADEBOOK_STATS.adaptiveTGT).toFixed(2);
     const rr=(parseFloat(_sl)>0?(parseFloat(_tgt)/parseFloat(_sl)):0).toFixed(2);
-    return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · tradebook-derived</div></div>`;
+    const nudge=getMissedOppNudge();
+    const nudgeStr=nudge>0?` · <span style="color:var(--amber);font-size:10px" title="You leave an avg of ${(nudge/0.25).toFixed(2)}% on the table after sells — informative only, not applied to TGT">missed opp +${nudge.toFixed(2)}%</span>`:'';
+    return `<div class="st"><div class="st-l">SL / TGT</div><div class="st-v" style="font-size:17px"><span style="color:var(--red)">−${_sl}%</span><span style="color:var(--t3);font-size:13px"> / </span><span style="color:var(--green)">+${_tgt}%</span></div><div class="st-d">R:R ${rr} · tradebook-derived${nudgeStr}</div></div>`;
   })();
 
   document.getElementById('statsBar').innerHTML=`
@@ -1921,7 +1923,7 @@ function renderStats(){
         const moTotal=moEntries.reduce((s,e)=>s+e.count,0);
         const moAvg=moEntries.reduce((s,e)=>s+e.avg*e.count,0)/moTotal;
         const moNudge=+(moAvg*0.25).toFixed(2);
-        infoPills.push(`<span class="info-pill pill-amber" title="Across ${moDates} sell date(s), ${moTotal} stocks: stock-weighted avg missed gain (all sold symbols, including perfect exits). Nudge = 25% of avg — added to effective TGT in allocation and basket export.">🎯 ${moDates} sell date${moDates===1?'':'s'} · avg +${moAvg.toFixed(2)}% left · TGT nudged +${moNudge.toFixed(2)}%</span>`);
+        infoPills.push(`<span class="info-pill pill-amber" title="Across ${moDates} sell date(s), ${moTotal} stocks: stock-weighted avg missed gain (all sold symbols, including perfect exits). Informative only — not applied to TGT.">🎯 ${moDates} sell date${moDates===1?'':'s'} · avg +${moAvg.toFixed(2)}% left · nudge +${moNudge.toFixed(2)}% (info)</span>`);
       }
     }
   }catch(e){}
@@ -3032,13 +3034,12 @@ function getMissedOppNudge(){
 }
 
 function getEffectiveTgtPct(){
-  const nudge=getMissedOppNudge();
   const round05=v=>+(Math.round(v/0.05)*0.05).toFixed(2);
-  if(TRADEBOOK_STATS && TRADEBOOK_STATS.adaptiveTGT > 0) return round05(TRADEBOOK_STATS.adaptiveTGT + nudge);
+  if(TRADEBOOK_STATS && TRADEBOOK_STATS.adaptiveTGT > 0) return round05(TRADEBOOK_STATS.adaptiveTGT);
   const vals = (typeof FILT !== 'undefined' ? FILT : []).map(s => s.tgtPct).filter(v => v != null && isFinite(v) && v > 0);
   if(!vals.length) return null;
   vals.sort((a,b)=>a-b);
-  return round05(vals[Math.floor(vals.length/2)] + nudge);
+  return round05(vals[Math.floor(vals.length/2)]);
 }
 
 function computeAlloc(capital, selList){
@@ -4593,6 +4594,7 @@ initNSELinks();
 </script>
 </body>
 </html>
+
 
 
 
